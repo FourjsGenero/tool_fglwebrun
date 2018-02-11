@@ -1,0 +1,11 @@
+#!/bin/bash
+realpath() {
+    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
+SCRIPT_NAME=`realpath $0`
+FGLWEBRUNDIR=`dirname $SCRIPT_NAME` 
+#we recompile everything always: hence avoid version clashes
+make -C $FGLWEBRUNDIR clean_prog all > /dev/null
+export FGLWEBRUNDIR
+exec fglrun $FGLWEBRUNDIR/fglwebrun.42m "$@" 
