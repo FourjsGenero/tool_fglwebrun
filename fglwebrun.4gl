@@ -134,12 +134,14 @@ END FUNCTION
 FUNCTION createGASApp()
   DEFINE ch base.Channel
   DEFINE appdir,appfile,ext,cmd,line,name STRING
+  DEFINE arg1,basedir,wcdir STRING
   DEFINE copyenv DYNAMIC ARRAY OF STRING
   DEFINE code,i,eqIdx INT
   DEFINE invokeShell BOOLEAN
   DEFINE dollar STRING
   LET dollar='$'
-  LET cmd= "fglrun -r ",arg_val(1),IIF(isWin(),">NUL"," >/dev/null 2>&1")
+  LET arg1=arg_val(1)
+  LET cmd= "fglrun -r ",arg1,IIF(isWin(),">NUL"," >/dev/null 2>&1")
   --we check if we can deassemble the file, this works for .42m and .42r
   RUN cmd RETURNING code
   IF code THEN --we could not find a valid .42r or .42m with the given argument
@@ -155,7 +157,7 @@ FUNCTION createGASApp()
       CALL myerr(sfmt("GAS app dir:%1 doesn't exist and cannot be created",appdir))
     END IF 
   END IF
-  LET m_appname=os.Path.baseName(arg_val(1))
+  LET m_appname=os.Path.baseName(arg1)
   IF (ext:=os.Path.extension(m_appname)) IS NOT NULL THEN
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
 
@@ -200,12 +202,20 @@ FUNCTION createGASApp()
       CALL ch.writeLine( "    <ENVIRONMENT_VARIABLE Id=\"FGLGUI\">2</ENVIRONMENT_VARIABLE>")
   END IF
   CALL ch.writeLine(sfmt(  "    <PATH>%1</PATH>",os.Path.pwd()))
-  CALL ch.writeLine(sfmt(  "    <MODULE>%1</MODULE>",arg_val(1)))
+  CALL ch.writeLine(sfmt(  "    <MODULE>%1</MODULE>",arg1))
   CALL ch.writeLine(       "    <PARAMETERS>")
   FOR i=2 TO num_args()
     CALL ch.writeLine(sfmt(  "      <PARAMETER>%1</PARAMETER>",arg_val(i)))
   END FOR
   CALL ch.writeLine(       "    </PARAMETERS>")
+  IF arg1.getCharAt(1)=="/" THEN --we were invoked via absolute path
+    LET basedir=os.Path.dirname(arg1)
+    LET wcdir=os.Path.join(basedir,"webcomponents")
+    IF os.Path.exists(wcdir) THEN
+      CALL log(sfmt("add <WEB_COMPONENT_DIRECTORY>:%1",wcdir))
+      CALL ch.writeLine(sfmt("    <WEB_COMPONENT_DIRECTORY>%1</WEB_COMPONENT_DIRECTORY>",wcdir))
+    END IF
+  END IF
   CALL ch.writeLine(       "  </EXECUTION>")
   IF m_gbcdir IS NOT NULL THEN
     CALL ch.writeLine(       "  <UA_OUTPUT>")
