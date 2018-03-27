@@ -2,6 +2,8 @@ OPTIONS SHORT CIRCUIT
 IMPORT util
 IMPORT os
 DEFINE m_gasdir STRING
+DEFINE m_gasversion FLOAT
+DEFINE m_fgldir STRING
 DEFINE m_port INT
 DEFINE m_isMac BOOLEAN
 DEFINE m_gbcdir,m_gbcname STRING
@@ -25,10 +27,12 @@ DEFINE m_appname STRING
 MAIN
   LET m_port=6395 --default GAS port is 6394
   LET m_gasdir=fgl_getenv("FGLASDIR")
+  LET m_fgldir=fgl_getenv("FGLDIR")
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
     CALL myerr("FGLASDIR not set")
   END IF
+  LET m_gasversion=getGASVersion()
   IF num_args()<1 THEN
     DISPLAY sfmt("usage:%1 <program> <arg> <arg>",arg_val(0))
     RETURN
@@ -53,7 +57,7 @@ END MAIN
 --web dir
 FUNCTION checkGBCDir()
   DEFINE dummy,code INT
-  DEFINE custom_gbc STRING
+  DEFINE custom_gbc,indexhtml STRING
   LET m_gbcdir=fgl_getenv("GBCDIR")
   IF m_gbcdir IS NULL THEN
     RETURN
@@ -70,11 +74,18 @@ FUNCTION checkGBCDir()
   IF m_gbcname=="gwc-js" THEN
     CALL myerr("GBC dirname must not be 'gwc-js'")
   END IF
-  --remove the old symbolic link
+  LET indexhtml=os.Path.join(m_gbcdir,"index.html")
+  IF NOT os.Path.exists(indexhtml) THEN
+    CALL myerr(sfmt("No index.html found in %1",m_gbcdir))
+  END IF
   LET custom_gbc=os.Path.join(os.Path.join(m_gasdir,"web"),m_gbcname)
+  --the linking into FGLASDIR/web is only required for the URL <gbcname>/index.html
+  --we would not need to do it for /ua/r/_app links, but /ua/r/_app links
+  --require a bootstrap.html
+  --remove the old symbolic link
   CALL os.Path.delete(custom_gbc) RETURNING dummy
   CALL log(sfmt("custom_gbc:%1",custom_gbc))
-  IF fgl_getenv("WINDIR") IS NULL THEN
+  IF NOT isWin() IS NULL THEN
     RUN sfmt("ln -s %1 %2",m_gbcdir,custom_gbc) RETURNING code
   ELSE
     RUN sfmt("mklink %1 %2",m_gbcdir,custom_gbc) RETURNING code
@@ -128,6 +139,72 @@ FUNCTION file_get_output(program,arr)
     LET arr[idx]=linestr
   END WHILE
   CALL c.close()
+END FUNCTION
+
+FUNCTION quote(path)
+  DEFINE path STRING
+  IF path.getIndexOf(" ",1)>0 THEN
+    LET path='"',path,'"'
+  END IF
+  RETURN path
+END FUNCTION
+
+FUNCTION getGASVersion()
+  DEFINE ch base.channel
+  DEFINE cmd,line,httpdispatch,vstring STRING
+  DEFINE arr DYNAMIC ARRAY OF STRING
+  DEFINE gasversion FLOAT
+  DEFINE idx,i INT
+ 
+  LET httpdispatch=getGASExe()
+  LET ch = base.channel.create()
+  LET cmd=quote(httpdispatch)," -V"
+  --DISPLAY "gasversion cmd:",cmd
+  CALL file_get_output(cmd,arr)
+  LET gasversion=1.0
+  FOR i=1 TO arr.getLength()
+    LET line=arr[i]
+    --DISPLAY sfmt("gasline(%1)=%2",i,line)
+    #New format for httpdispatch -V (GAS 2.30)
+    LET idx=line.getIndexOf("ttpdispatch ",2)    
+    IF idx=0 THEN
+      LET idx=line.getIndexOf("ersion",2)
+      IF idx <> 0 THEN
+        LET vstring=line.subString(idx+7,line.getLength())
+        EXIT FOR
+      END IF
+    ELSE
+      LET vstring=line.subString(idx+12,line.getLength())
+      EXIT FOR
+    END IF
+  END FOR
+  IF vstring IS NOT NULL THEN
+    LET gasversion=parseVersion(vstring)
+    DISPLAY "gasversion=",gasversion
+  END IF
+  CALL ch.close()
+  RETURN gasversion
+END FUNCTION
+
+FUNCTION parseVersion(vstr)
+  DEFINE vstr STRING
+  DEFINE v,v2 STRING
+  DEFINE fversion FLOAT
+  DEFINE pointpos,prevpos INTEGER
+  --cut out major.minor from the version
+  LET pointpos=vstr.getIndexOf(".",1)
+  IF pointpos>1 THEN
+    LET v=vstr.subString(1,pointpos-1)
+    LET prevpos=pointpos+1
+  END IF
+  --get the index of the 2nd point
+  LET pointpos=vstr.getIndexOf(".",prevpos)
+  IF pointpos>1 THEN
+    LET v2=vstr.subString(prevpos,pointpos-1)
+    LET v=v,".",v2
+  END IF
+  LET fversion=v
+  RETURN fversion
 END FUNCTION
 
 --write a GAS app entry 
@@ -196,9 +273,9 @@ FUNCTION createGASApp()
       END IF
     END IF
   END FOR
-  IF m_gbcdir IS NOT NULL AND 
+  IF m_gbcdir IS NOT NULL AND fgl_getversion()<31000 AND
      os.Path.exists(os.Path.join(m_gbcdir,"gbc2.css")) THEN
-     --GBC2 needs JSON with FGLGUI set to 2
+     --GBC2 needs JSON with FGLGUI set to 2 before FGL 3.10
       CALL ch.writeLine( "    <ENVIRONMENT_VARIABLE Id=\"FGLGUI\">2</ENVIRONMENT_VARIABLE>")
   END IF
   CALL ch.writeLine(sfmt(  "    <PATH>%1</PATH>",os.Path.pwd()))
@@ -221,7 +298,11 @@ FUNCTION createGASApp()
     CALL ch.writeLine(       "  <UA_OUTPUT>")
     CALL ch.writeLine(  sfmt("     <PROXY>%1(res.uaproxy.cmd)</PROXY>",dollar))
     CALL ch.writeLine(  sfmt("     <PUBLIC_IMAGEPATH>%1(res.public.resources)</PUBLIC_IMAGEPATH>",dollar))
-    CALL ch.writeLine(  sfmt("     <GWC-JS>%1</GWC-JS>",m_gbcname))
+    IF m_gasversion>=3.1 THEN
+      CALL ch.writeLine(  sfmt("     <GBC>%1</GBC>",m_gbcname))
+    ELSE
+      CALL ch.writeLine(  sfmt("     <GWC-JS>%1</GWC-JS>",m_gbcname))
+    END IF
     CALL ch.writeLine(       "   </UA_OUTPUT>")
   END IF
 
@@ -230,15 +311,21 @@ FUNCTION createGASApp()
   CALL log(sfmt("wrote gas app file:%1",appfile))
 END FUNCTION
 
-FUNCTION runGAS()
-  DEFINE cmd,gasbindir,httpdispatch,filter STRING
-  DEFINE trial,i INT
+FUNCTION getGASExe()
+  DEFINE gasbindir,httpdispatch STRING
   LET gasbindir=os.Path.join(m_gasdir,"bin")
   LET httpdispatch=IIF(isWin(),"httpdispatch.exe","httpdispatch")
   LET httpdispatch=os.Path.join(gasbindir,httpdispatch)
   IF NOT os.Path.exists(httpdispatch) THEN
     CALL myerr(sfmt("Can't find %1",httpdispatch))
   END IF
+  RETURN httpdispatch
+END FUNCTION
+
+FUNCTION runGAS()
+  DEFINE cmd,httpdispatch,filter STRING
+  DEFINE trial,i INT
+  LET httpdispatch=getGASExe()
   IF isWin() THEN
     LET cmd='cd ',m_gasdir,'&&start ',httpdispatch
   ELSE
@@ -257,6 +344,12 @@ FUNCTION runGAS()
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
     IF NOT isWin() THEN
       LET cmd=cmd,' -E "res.log.output.path=/tmp"'
+    END IF
+    IF m_gbcdir IS NOT NULL THEN
+      LET cmd=cmd,
+        --hooray, renamed options ... , since 3.10 "res.path.gbc.user"
+        sfmt(' -E "res.path.%1.user=',IIF(m_gasversion>=3.1,"gbc","gwcjs")),
+        os.Path.dirname(m_gbcdir),'"'
     END IF
     LET cmd=cmd,' -E "res.appdata.path=',os.Path.join(m_gasdir,"appdata"),'"'
     

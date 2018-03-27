@@ -1,9 +1,10 @@
 # fglwebrun
-fglwebrun - run GBC apps from the command line
+fglwebrun - run GBC web apps from the command line
 
 # Motivation
 
 Are you tired of writing .xcf files and starting httpdispatch on the command line ?
+Tired of renamed options in as.xcf/appname.xcf when the GAS version changes ?
 
 Then fglwebrun is the right tool for you.
 It is (almost) as easy as 
@@ -17,9 +18,11 @@ $ fglwebrun prog arg1 arg2
 ```
 
 Prerequisites:
-httpdispatch + GBC needs to be installed and
-the FGLASDIR environment variable needs to be set.
+GAS >=3.00
+GBC >=1.20 need to be installed and
+the FGLASDIR environment variable for the GAS install location needs to be set.
 (assuming GBC in $FGLASDIR/web/gbc-js)
+(since GAS3.10 GBC is *also* searched in $FGLDIR/web_utilities/gbc/gbc)
 
 # How it works
 
@@ -45,6 +48,13 @@ BROWSER - Set this to override the default browser
 Example on Mac running the app with Google Chrome:
 ```
 $ BROWSER=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome fglwebrun prog
+```
+
+GBCDIR - Sets a custom GBC directory with your customization
+
+Example with a specific GBC directory:
+```
+$ GBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
 ```
 
 CATEGORIES_FILTER - Set this to override the GAS categories_filter option,
