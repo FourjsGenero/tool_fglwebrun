@@ -8,6 +8,8 @@ DEFINE m_port INT
 DEFINE m_isMac BOOLEAN
 DEFINE m_gbcdir,m_gbcname STRING
 DEFINE m_appname STRING
+DEFINE m_GDC STRING
+DEFINE m_html5 STRING
 --provides a simple command line fglrun replacement for GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -28,6 +30,8 @@ MAIN
   LET m_port=6395 --default GAS port is 6394
   LET m_gasdir=fgl_getenv("FGLASDIR")
   LET m_fgldir=fgl_getenv("FGLDIR")
+  LET m_GDC=fgl_getenv("GDC")
+  LET m_html5=fgl_getenv("HTML5")
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
     CALL myerr("FGLASDIR not set")
@@ -42,7 +46,7 @@ MAIN
     CALL runGAS()
   END IF
   CALL createGASApp()
-  IF fgl_getenv("GDC") IS NOT NULL THEN
+  IF m_GDC IS NOT NULL THEN
     CALL openGDC()
   ELSE
     IF fgl_getenv("GMI") IS NOT NULL THEN
@@ -258,6 +262,7 @@ FUNCTION createGASApp()
     CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.fgldir\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("FGLDIR")))
   END IF
   CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.path\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("PATH")))
+  CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.html5proxy.param\" Source=\"INTERNAL\">%1</RESOURCE>","--development"))
   CALL ch.writeLine(       "  <EXECUTION>")
   CALL file_get_output(IIF(isWin(),"set","env"),copyenv) 
   --we simply add every environment var in the .xcf file
@@ -294,17 +299,24 @@ FUNCTION createGASApp()
     END IF
   END IF
   CALL ch.writeLine(       "  </EXECUTION>")
-  IF m_gbcdir IS NOT NULL THEN
-    CALL ch.writeLine(       "  <UA_OUTPUT>")
-    CALL ch.writeLine(  sfmt("     <PROXY>%1(res.uaproxy.cmd)</PROXY>",dollar))
-    CALL ch.writeLine(  sfmt("     <PUBLIC_IMAGEPATH>%1(res.public.resources)</PUBLIC_IMAGEPATH>",dollar))
-    IF m_gasversion>=3.1 THEN
-      CALL ch.writeLine(  sfmt("     <GBC>%1</GBC>",m_gbcname))
-    ELSE
-      CALL ch.writeLine(  sfmt("     <GWC-JS>%1</GWC-JS>",m_gbcname))
-    END IF
-    CALL ch.writeLine(       "   </UA_OUTPUT>")
-  END IF
+  CASE
+    WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
+      CALL ch.writeLine(     "  <OUTPUT>")
+      CALL ch.writeLine(sfmt("  <MAP Id=\"DUA_%1\" Allowed=\"TRUE\">",
+            IIF(m_gdc IS NOT NULL,"GDC","GWC")))
+      CALL ch.writeLine(     "  </MAP>")
+      CALL ch.writeLine(     "  </OUTPUT>")
+    WHEN m_gbcdir IS NOT NULL
+      CALL ch.writeLine(       "  <UA_OUTPUT>")
+      CALL ch.writeLine(  sfmt("     <PROXY>%1(res.uaproxy.cmd)</PROXY>",dollar))
+      CALL ch.writeLine(  sfmt("     <PUBLIC_IMAGEPATH>%1(res.public.resources)</PUBLIC_IMAGEPATH>",dollar))
+      IF m_gasversion>=3.1 THEN
+        CALL ch.writeLine(  sfmt("     <GBC>%1</GBC>",m_gbcname))
+      ELSE
+        CALL ch.writeLine(  sfmt("     <GWC-JS>%1</GWC-JS>",m_gbcname))
+      END IF
+      CALL ch.writeLine(       "   </UA_OUTPUT>")
+  END CASE
 
   CALL ch.writeLine(       "</APPLICATION>")
   CALL ch.close()
@@ -396,8 +408,8 @@ FUNCTION read_response(c)
     WHILE NOT c.isEof()
       LET s = c.readLine()
       LET s = s.toLowerCase()
-
-      IF s MATCHES "x-fourjs-server: gas/3*" THEN
+      IF (s MATCHES "server: gas/2*")
+         OR (s MATCHES "x-fourjs-server: gas/3*") THEN
         RETURN TRUE
       END IF
       IF s.getLength() == 0 THEN
@@ -429,11 +441,14 @@ END FUNCTION
 
 FUNCTION openBrowser()
   DEFINE url,cmd STRING
-  IF m_gbcdir IS NOT NULL THEN
-    LET url=sfmt("http://localhost:%1/%2/index.html?app=_%3",m_port,m_gbcname,m_appname)
-  ELSE
-    LET url=sfmt("http://localhost:%1/gwc-js/index.html?app=_%2",m_port,m_appname)
-  END IF
+  CASE
+    WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
+      LET url=sfmt("http://localhost:%1/wa/r/_%2",m_port,m_appname)
+    WHEN m_gbcdir IS NOT NULL
+      LET url=sfmt("http://localhost:%1/%2/index.html?app=_%3",m_port,m_gbcname,m_appname)
+    OTHERWISE
+      LET url=sfmt("http://localhost:%1/gwc-js/index.html?app=_%2",m_port,m_appname)
+  END CASE
   CALL log(sfmt("start GWC-JS URL:%1",url))
   IF fgl_getenv("BROWSER") IS NOT NULL THEN
     LET cmd=sfmt("'%1' %2",fgl_getenv("BROWSER"),url)
@@ -469,7 +484,7 @@ END FUNCTION
 
 FUNCTION openGDC()
   DEFINE gdc,cmd STRING
-  LET gdc=fgl_getenv("GDC")
+  LET gdc=m_gdc
   IF NOT os.Path.exists(gdc) THEN
     CALL myerr(sfmt("Can't find '%1'",gdc))
   END IF
