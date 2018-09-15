@@ -18,9 +18,10 @@ $ fglwebrun prog arg1 arg2
 ```
 
 Prerequisites:
-GAS >=3.00
-GBC >=1.20 need to be installed and
-the FGLASDIR environment variable for the GAS install location needs to be set.
+FGL+GAS >=2.50
+The FGLASDIR environment variable for the GAS install location needs to be set.
+For GAS < 3.0 GWC HTML5 is started
+From GAS >= 3.0 GBC >=1.20 needs to be installed 
 (assuming GBC in $FGLASDIR/web/gbc-js)
 (since GAS3.10 GBC is *also* searched in $FGLDIR/web_utilities/gbc/gbc)
 
@@ -48,6 +49,13 @@ BROWSER - Set this to override the default browser
 Example on Mac running the app with Google Chrome:
 ```
 $ BROWSER=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome fglwebrun prog
+```
+HTML5 - Enable the GWC HTML5 theme
+
+On GAS versions < 3.0 this is the default
+For GAS >= 3.0 you need to set this to 1 if you want the older web client
+```
+$ HTML5=1 fglwebrun prog
 ```
 
 GBCDIR - Sets a custom GBC directory with your customization
