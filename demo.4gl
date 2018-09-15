@@ -1,4 +1,5 @@
 MAIN 
+  DISPLAY "arg1:",arg_val(1),",arg2:",arg_val(2)
   MESSAGE "arg1:",arg_val(1),",arg2:",arg_val(2)
   MENU 
     COMMAND "Long Sleep"
