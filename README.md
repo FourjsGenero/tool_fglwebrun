@@ -19,11 +19,14 @@ $ fglwebrun prog arg1 arg2
 
 Prerequisites:
 FGL+GAS >=2.50
+
 The FGLASDIR environment variable for the GAS install location needs to be set.
-For GAS < 3.0 GWC HTML5 is started
-From GAS >= 3.0 GBC >=1.20 needs to be installed 
-(assuming GBC in $FGLASDIR/web/gbc-js)
-(since GAS3.10 GBC is *also* searched in $FGLDIR/web_utilities/gbc/gbc)
+
+For GAS < 3.0 GWC HTML5 is started.
+
+From GAS >= 3.0 GBC >=1.20 needs to be installed (assuming GBC in $FGLASDIR/web/gbc-js).
+
+Since GAS3.10 GBC is *also* searched in $FGLDIR/web_utilities/gbc/gbc 
 
 # How it works
 
