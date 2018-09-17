@@ -10,6 +10,7 @@ DEFINE m_gbcdir,m_gbcname STRING
 DEFINE m_appname STRING
 DEFINE m_GDC STRING
 DEFINE m_html5 STRING
+DEFINE m_appdata_dir STRING
 --provides a simple command line fglrun replacement for GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -211,11 +212,40 @@ FUNCTION parseVersion(vstr)
   RETURN fversion
 END FUNCTION
 
+FUNCTION getAppDataDir()
+  DEFINE xcfdir STRING
+  IF m_appdata_dir IS NULL THEN 
+    LET m_appdata_dir=os.Path.join(os.Path.homeDir(),".gas_appdata")
+    DISPLAY "m_appdata_dir:",m_appdata_dir
+    LET xcfdir=os.Path.join(m_appdata_dir,"app")
+    DISPLAY "xcfdir:",xcfdir
+    IF NOT os.Path.exists(m_appdata_dir) THEN
+      IF NOT os.Path.mkdir(m_appdata_dir) THEN
+        CALL myerr(sfmt("Can't create appdata '%1'",m_appdata_dir))
+      END IF
+    ELSE
+      IF NOT os.Path.isDirectory(m_appdata_dir) THEN
+        CALL myerr(sfmt("'%1' is not a directory",m_appdata_dir))
+      END IF
+    END IF
+    IF NOT os.Path.exists(xcfdir) THEN
+      IF NOT os.Path.mkdir(xcfdir) THEN
+        CALL myerr(sfmt("Can't create xcfdir '%1'",xcfdir))
+      END IF
+    ELSE
+      IF NOT os.Path.isDirectory(xcfdir) THEN
+        CALL myerr(sfmt("'%1' is not a directory",xcfdir))
+      END IF
+    END IF
+  END IF
+  RETURN m_appdata_dir
+END FUNCTION
+
 --write a GAS app entry 
 FUNCTION createGASApp()
   DEFINE ch base.Channel
-  DEFINE appdir,appfile,ext,cmd,line,name STRING
-  DEFINE arg1,basedir,wcdir STRING
+  DEFINE appfile,ext,cmd,line,name STRING
+  DEFINE arg1,basedir,wcdir,xcfdir STRING
   DEFINE copyenv DYNAMIC ARRAY OF STRING
   DEFINE code,i,eqIdx INT
   DEFINE invokeShell BOOLEAN
@@ -232,18 +262,13 @@ FUNCTION createGASApp()
     END IF
   END IF
   LET ch=base.Channel.create()
-  LET appdir=os.Path.join(os.Path.join(m_gasdir,"appdata"),"app")
-  IF NOT os.Path.exists(appdir) THEN
-    IF NOT os.Path.mkdir(appdir) THEN
-      CALL myerr(sfmt("GAS app dir:%1 doesn't exist and cannot be created",appdir))
-    END IF 
-  END IF
   LET m_appname=os.Path.baseName(arg1)
   IF (ext:=os.Path.extension(m_appname)) IS NOT NULL THEN
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
 
   END IF
-  LET appfile=os.Path.join(appdir,sfmt("_%1.xcf",m_appname))
+  LET xcfdir=os.Path.join(getAppDataDir(),"app")
+  LET appfile=os.Path.join(xcfdir,sfmt("_%1.xcf",m_appname))
   TRY
     CALL ch.openFile(appfile,"w")
   CATCH
@@ -363,7 +388,8 @@ FUNCTION runGAS()
         sfmt(' -E "res.path.%1.user=',IIF(m_gasversion>=3.1,"gbc","gwcjs")),
         os.Path.dirname(m_gbcdir),'"'
     END IF
-    LET cmd=cmd,' -E "res.appdata.path=',os.Path.join(m_gasdir,"appdata"),'"'
+    --LET cmd=cmd,' -E "res.appdata.path=',os.Path.join(m_gasdir,"appdata"),'"'
+    LET cmd=cmd,' -E "res.appdata.path=',getAppDataDir(),'"'
     
     CALL log(sfmt("RUN %1 ...",cmd))
     RUN cmd WITHOUT WAITING
