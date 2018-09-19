@@ -18,7 +18,7 @@ $ fglwebrun prog arg1 arg2
 ```
 
 Prerequisites:
-FGL+GAS >=2.50
+FGL+GAS >=2.41
 
 The FGLASDIR environment variable for the GAS install location needs to be set.
 

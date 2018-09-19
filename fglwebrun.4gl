@@ -46,6 +46,9 @@ MAIN
   IF NOT try_GASalive() THEN
     CALL runGAS()
   END IF
+  IF m_gasversion<3.0 THEN
+    CALL checkWebComponentInstall()
+  END IF
   CALL createGASApp()
   IF m_GDC IS NOT NULL THEN
     CALL openGDC()
@@ -57,6 +60,32 @@ MAIN
     END IF 
   END IF
 END MAIN
+
+--2.41 has no os.Path.fullPath
+FUNCTION fullPath(dir_or_file)
+  DEFINE oldpath,dir_or_file,full,baseName STRING
+  DEFINE dummy INT
+  DEFINE isFile BOOLEAN
+  LET full=dir_or_file
+  LET oldpath=os.Path.pwd()
+  IF NOT os.Path.exists(dir_or_file) THEN
+    CALL myerr(sfmt("fullPath:'%1' does not exist",dir_or_file))
+  END IF
+  IF NOT os.Path.isDirectory(dir_or_file) THEN
+    --file case
+    LET baseName=os.Path.basename(dir_or_file)
+    LET dir_or_file=os.Path.dirName(dir_or_file)
+  END IF
+  IF os.Path.chdir(dir_or_file) THEN
+    LET full=os.Path.pwd()
+    IF baseName IS NOT NULL THEN 
+      --file case
+      LET full=os.Path.join(full,baseName)
+    END IF
+  END IF
+  CALL os.Path.chdir(oldpath) RETURNING dummy
+  RETURN full
+END FUNCTION
 
 --if GBCDIR is set a custom GBC installation is linked into the GAS
 --web dir
@@ -71,7 +100,7 @@ FUNCTION checkGBCDir()
      (NOT os.Path.isDirectory(m_gbcdir)) THEN
     CALL myerr(sfmt("GBCDIR %1 is not a directory",m_gbcdir))
   END IF
-  LET m_gbcdir=os.Path.fullPath(m_gbcdir);
+  LET m_gbcdir=fullPath(m_gbcdir);
   LET m_gbcname=os.Path.baseName(m_gbcdir);
   IF m_gbcname IS NULL THEN
     CALL myerr("GBC dirname must not be NULL")
@@ -212,6 +241,10 @@ FUNCTION parseVersion(vstr)
   RETURN fversion
 END FUNCTION
 
+FUNCTION getAppDir()
+  RETURN os.Path.join(getAppDataDir(),"app")
+END FUNCTION
+
 FUNCTION getAppDataDir()
   DEFINE xcfdir STRING
   IF m_appdata_dir IS NULL THEN 
@@ -267,7 +300,7 @@ FUNCTION createGASApp()
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
 
   END IF
-  LET xcfdir=os.Path.join(getAppDataDir(),"app")
+  LET xcfdir=getAppDir()
   LET appfile=os.Path.join(xcfdir,sfmt("_%1.xcf",m_appname))
   TRY
     CALL ch.openFile(appfile,"w")
@@ -388,8 +421,12 @@ FUNCTION runGAS()
         sfmt(' -E "res.path.%1.user=',IIF(m_gasversion>=3.1,"gbc","gwcjs")),
         os.Path.dirname(m_gbcdir),'"'
     END IF
-    --LET cmd=cmd,' -E "res.appdata.path=',os.Path.join(m_gasdir,"appdata"),'"'
-    LET cmd=cmd,' -E "res.appdata.path=',getAppDataDir(),'"'
+    IF m_gasversion < 2.50 THEN
+      LET cmd=cmd,' -E "res.path.app=',getAppDir(),'"'
+    ELSE
+      --renamed in 2.50...
+      LET cmd=cmd,' -E "res.appdata.path=',getAppDataDir(),'"'
+    END IF
     
     CALL log(sfmt("RUN %1 ...",cmd))
     RUN cmd WITHOUT WAITING
@@ -520,4 +557,74 @@ FUNCTION openGDC()
   LET cmd=sfmt("%1 -u %2",gdc,getGASURL())
   CALL log(sfmt("GDC cmd:%1",cmd))
   RUN cmd WITHOUT WAITING
+END FUNCTION
+
+#GAS <3.0
+#installs webcomponents located in `pwd`/webcomponents/<component>
+#into the GAS by copying them into $GASDIR/web/components/<component>
+#For GAS >=3.00 this handled by GAS automatically
+FUNCTION checkWebComponentInstall()
+  DEFINE sub,html,component,webcomponents STRING
+  DEFINE dirhandle INT
+  LET webcomponents=os.Path.join(os.Path.pwd(),"webcomponents")
+  IF os.Path.exists(webcomponents) AND os.Path.isDirectory(webcomponents) THEN
+    LET dirhandle=os.Path.dirOpen(webcomponents)
+    WHILE (component:=os.Path.dirNext(dirhandle)) IS NOT NULL
+      IF component=="." OR component==".." THEN
+        CONTINUE WHILE
+      END IF
+      LET sub=os.Path.join(webcomponents,component)
+      LET html=os.Path.join(sub,component||".html")
+      IF os.Path.exists(html) THEN
+        CALL copyWCAssets(sub,component)
+      END IF
+    END WHILE
+    CALL os.Path.dirClose(dirhandle)
+  END IF
+END FUNCTION
+
+FUNCTION copyWCAssets(sub,component) 
+  DEFINE sub,component STRING
+  DEFINE name,componentsdir,componentdir,src,dest,webdir STRING
+  DEFINE dirhandle,dummy INT
+  #I did not figure out yet where the webcomponent can be made private to gas<3.0
+  #so we pollute the GAS/web directory for now
+  LET webdir=os.Path.join(m_gasdir,"web")
+  IF NOT os.Path.exists(webdir) THEN
+    IF NOT os.Path.mkdir(webdir) THEN
+      CALL myerr(sfmt("Can't create '%1'",webdir))
+    END IF
+  ELSE 
+    IF NOT os.Path.isDirectory(webdir) THEN
+      CALL myerr(sfmt("'%1' is not a directory",webdir))
+    END IF
+  END IF
+  LET componentsdir=os.Path.join(webdir,"components")
+  IF NOT os.Path.exists(componentsdir) THEN
+    IF NOT os.Path.mkdir(componentsdir) THEN
+      CALL myerr(sfmt("Can't create web/components dir:%1",componentsdir))
+    END IF
+  END IF
+  LET componentdir=os.Path.join(componentsdir,component)
+  IF fgl_getenv("WINDIR") IS NULL THEN 
+    RUN sfmt("rm -rf %1",componentdir) RETURNING dummy
+  ELSE
+    RUN sfmt("rmdir %1 /s /q",componentdir) RETURNING dummy
+  END IF
+  IF NOT os.Path.mkdir(componentdir) THEN
+    CALL myerr(sfmt("Can't create webcomponent dir:%1",componentdir))
+  END IF
+  LET dirhandle=os.Path.dirOpen(sub)
+  WHILE (name:=os.Path.dirNext(dirhandle)) IS NOT NULL
+    IF name=="." OR name==".." THEN
+      CONTINUE WHILE
+    END IF
+    LET src=os.Path.join(sub,name)
+    LET dest=os.Path.join(componentdir,name)
+    DISPLAY sfmt("copy '%1' -> '%2'",src,dest)
+    IF NOT os.Path.copy(src,dest) THEN
+      CALL myerr(sfmt("Can't copy '%1' to '%2'",src,dest))
+    END IF
+  END WHILE
+  CALL os.Path.dirClose(dirhandle)
 END FUNCTION
