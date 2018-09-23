@@ -65,7 +65,6 @@ END MAIN
 FUNCTION fullPath(dir_or_file)
   DEFINE oldpath,dir_or_file,full,baseName STRING
   DEFINE dummy INT
-  DEFINE isFile BOOLEAN
   LET full=dir_or_file
   LET oldpath=os.Path.pwd()
   IF NOT os.Path.exists(dir_or_file) THEN
