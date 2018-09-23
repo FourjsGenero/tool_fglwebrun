@@ -502,18 +502,33 @@ FUNCTION log(s)
 END FUNCTION
 
 FUNCTION openBrowser()
-  DEFINE url,cmd STRING
+  DEFINE url,cmd,browser STRING
+  DEFINE fglhost,host,fglwebrungdc STRING
+  LET fglhost=fgl_getenv("FGLCOMPUTER")
+  LET host=IIF(fglhost IS NULL,"localhost",fglhost)
   CASE
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
-      LET url=sfmt("http://localhost:%1/wa/r/_%2",m_port,m_appname)
+      LET url=sfmt("http://%1:%2/wa/r/_%3",host,m_port,m_appname)
     WHEN m_gbcdir IS NOT NULL
-      LET url=sfmt("http://localhost:%1/%2/index.html?app=_%3",m_port,m_gbcname,m_appname)
+      LET url=sfmt("http://%1:%2/%3/index.html?app=_%4",host,m_port,m_gbcname,m_appname)
     OTHERWISE
-      LET url=sfmt("http://localhost:%1/gwc-js/index.html?app=_%2",m_port,m_appname)
+      LET url=sfmt("http://%1:%2/gwc-js/index.html?app=_%3",host,m_port,m_appname)
   END CASE
   CALL log(sfmt("start GWC-JS URL:%1",url))
-  IF fgl_getenv("BROWSER") IS NOT NULL THEN
-    LET cmd=sfmt("'%1' %2",fgl_getenv("BROWSER"),url)
+  LET browser=fgl_getenv("BROWSER")
+  IF browser IS NOT NULL THEN
+    CASE
+    WHEN browser=="n" OR browser="no" OR browser=="none" 
+      DISPLAY "Copy the following URL into your browser:"
+      DISPLAY url
+      RETURN
+    WHEN browser=="gdc"
+      LET fglwebrungdc=os.Path.join(fgl_getenv("FGLWEBRUNDIR"),"fglwebrungdc")
+      LET cmd=sfmt("fglrun '%1' %2",fglwebrungdc,url)
+      DISPLAY "cmd:",cmd
+    OTHERWISE
+      LET cmd=sfmt("'%1' %2",fgl_getenv("BROWSER"),url)
+    END CASE
   ELSE
     CASE
       WHEN isWin() 
