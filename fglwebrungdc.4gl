@@ -25,7 +25,7 @@ FUNCTION openURL(url)
   CASE
       WHEN osType=="windows" 
         LET cmd=sfmt('cmd /c "start %1"',url)
-      WHEN osType MATCHES "mac*" OR osType=="OSX"
+      WHEN osType MATCHES "mac*" OR osType=="osx"
         LET cmd=sfmt("open %1",url)
       OTHERWISE --assume kinda linux
         LET cmd=sfmt("xdg-open %1",url)
