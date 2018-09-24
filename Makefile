@@ -10,7 +10,7 @@ demo: fglwebrun demo.42m
 	./fglwebrun demo.42m a b
 
 clean_prog:
-	rm -f fglwebrun.42m
+	rm -f fglwebrun.42m fglwebrungdc.42m
 
 clean: clean_prog
 	rm -f *.42?

@@ -309,7 +309,7 @@ FUNCTION createGASApp()
   CALL ch.writeLine(       "<?xml version=\"1.0\"?>")
   CALL ch.writeLine(       "<APPLICATION Parent=\"defaultgwc\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"http://www.4js.com/ns/gas/2.30/cfextwa.xsd\">" )
   IF invokeShell THEN
-    CALL ch.writeLine(     "<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">sh</RESOURCE>")
+    CALL ch.writeLine(     "<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">sh -c </RESOURCE>")
       
   ELSE IF fgl_getenv("FGLRUN") IS NOT NULL THEN
     CALL ch.writeLine(sfmt("<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("FGLRUN")))
@@ -501,6 +501,15 @@ FUNCTION log(s)
   END IF
 END FUNCTION
 
+FUNCTION getTime()
+  DEFINE data base.StringBuffer
+  LET data = base.StringBuffer.create()
+  CALL data.append(CURRENT)
+  CALL data.replace(" ","_",0)
+  CALL data.replace(":","_",0)
+  RETURN data.toString()
+END FUNCTION
+
 FUNCTION openBrowser()
   DEFINE url,cmd,browser STRING
   DEFINE fglhost,host,fglwebrungdc STRING
@@ -508,11 +517,11 @@ FUNCTION openBrowser()
   LET host=IIF(fglhost IS NULL,"localhost",fglhost)
   CASE
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
-      LET url=sfmt("http://%1:%2/wa/r/_%3",host,m_port,m_appname)
+      LET url=sfmt("http://%1:%2/wa/r/_%3?t=%4",host,m_port,m_appname,getTime())
     WHEN m_gbcdir IS NOT NULL
-      LET url=sfmt("http://%1:%2/%3/index.html?app=_%4",host,m_port,m_gbcname,m_appname)
+      LET url=sfmt("http://%1:%2/%3/index.html?app=_%4&t=%5",host,m_port,m_gbcname,m_appname,getTime())
     OTHERWISE
-      LET url=sfmt("http://%1:%2/gwc-js/index.html?app=_%3",host,m_port,m_appname)
+      LET url=sfmt("http://%1:%2/gwc-js/index.html?app=_%3&t=%4",host,m_port,m_appname,getTime())
   END CASE
   CALL log(sfmt("start GWC-JS URL:%1",url))
   LET browser=fgl_getenv("BROWSER")
@@ -524,7 +533,7 @@ FUNCTION openBrowser()
       RETURN
     WHEN browser=="gdc"
       LET fglwebrungdc=os.Path.join(fgl_getenv("FGLWEBRUNDIR"),"fglwebrungdc")
-      LET cmd=sfmt("fglrun '%1' %2",fglwebrungdc,url)
+      LET cmd=sfmt('fglrun "%1" "%2"',fglwebrungdc,url)
       DISPLAY "cmd:",cmd
     OTHERWISE
       LET cmd=sfmt("'%1' %2",fgl_getenv("BROWSER"),url)

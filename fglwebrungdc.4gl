@@ -26,11 +26,11 @@ FUNCTION openURL(url)
       WHEN osType=="windows" 
         LET cmd=sfmt('cmd /c "start %1"',url)
       WHEN osType MATCHES "mac*" OR osType=="osx"
-        LET cmd=sfmt("open %1",url)
+        LET cmd=sfmt('open "%1"',url)
       OTHERWISE --assume kinda linux
         LET cmd=sfmt("xdg-open %1",url)
   END CASE
   DISPLAY "cmd:",cmd
-  CALL ui.Interface.frontcall("standard","execute",[cmd,0],[ret])
+  CALL ui.Interface.frontcall("standard","execute",[cmd,1],[ret])
   DISPLAY "ret:",ret
 END FUNCTION
