@@ -543,7 +543,7 @@ FUNCTION openBrowser()
       WHEN isWin() 
         LET cmd=sfmt("start %1",url)
       WHEN isMac() 
-        LET cmd=sfmt("open %1",url)
+        LET cmd=sfmt('open "%1"',url)
       OTHERWISE --assume kinda linux
         LET cmd=sfmt("xdg-open %1",url)
     END CASE
