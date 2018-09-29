@@ -394,6 +394,7 @@ END FUNCTION
 FUNCTION runGAS()
   DEFINE cmd,httpdispatch,filter STRING
   DEFINE trial,i INT
+  DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
   IF isWin() THEN
     LET cmd='cd ',m_gasdir,'&&start ',httpdispatch
@@ -407,6 +408,7 @@ FUNCTION runGAS()
       --default filter value
       --other possible values "ERROR" "ALL"
       LET filter="PROCESS"
+      LET redirect_error=TRUE
     END IF
     LET cmd=cmd,' -p ', m_gasdir,sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
     --comment the following line if you want  to disable AUI tree watching
@@ -425,6 +427,9 @@ FUNCTION runGAS()
     ELSE
       --renamed in 2.50...
       LET cmd=cmd,' -E "res.appdata.path=',getAppDataDir(),'"'
+    END IF
+    IF redirect_error THEN
+      LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
     END IF
     
     CALL log(sfmt("RUN %1 ...",cmd))
