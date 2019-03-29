@@ -11,7 +11,9 @@ DEFINE m_appname STRING
 DEFINE m_GDC STRING
 DEFINE m_html5 STRING
 DEFINE m_appdata_dir STRING
---provides a simple command line fglrun replacement for GWC-JS to do
+DEFINE m_gashost STRING
+DEFINE m_mydir STRING
+--provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
 --
@@ -33,6 +35,11 @@ MAIN
   LET m_fgldir=fgl_getenv("FGLDIR")
   LET m_GDC=fgl_getenv("GDC")
   LET m_html5=fgl_getenv("HTML5")
+  LET m_gashost=fgl_getenv("GASHOST")
+  IF m_gashost IS NULL THEN
+    LET m_gashost="localhost"
+  END IF
+  LET m_mydir=os.Path.fullPath(os.Path.dirname(arg_val(0)))
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
     CALL myerr("FGLASDIR not set")
@@ -91,13 +98,16 @@ END FUNCTION
 FUNCTION checkGBCDir()
   DEFINE dummy,code INT
   DEFINE custom_gbc,indexhtml STRING
-  LET m_gbcdir=fgl_getenv("GBCDIR")
+  LET m_gbcdir=fgl_getenv("FGLGBCDIR")
   IF m_gbcdir IS NULL THEN
-    RETURN
+    LET m_gbcdir=fgl_getenv("GBCDIR")
+    IF m_gbcdir IS NULL THEN
+      RETURN
+    END IF
   END IF
   IF (NOT os.Path.exists(m_gbcdir)) OR 
      (NOT os.Path.isDirectory(m_gbcdir)) THEN
-    CALL myerr(sfmt("GBCDIR %1 is not a directory",m_gbcdir))
+    CALL myerr(sfmt("(FGL)GBCDIR %1 is not a directory",m_gbcdir))
   END IF
   LET m_gbcdir=fullPath(m_gbcdir);
   LET m_gbcname=os.Path.baseName(m_gbcdir);
@@ -320,6 +330,7 @@ FUNCTION createGASApp()
   END IF
   CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.path\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("PATH")))
   CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.html5proxy.param\" Source=\"INTERNAL\">%1</RESOURCE>","--development"))
+  --CALL ch.writeLine(       "  <EXECUTION AllowUnsafeSession=\"TRUE\">")
   CALL ch.writeLine(       "  <EXECUTION>")
   CALL file_get_output(IIF(isWin(),"set","env"),copyenv) 
   --we simply add every environment var in the .xcf file
@@ -399,16 +410,16 @@ FUNCTION runGAS()
   IF isWin() THEN
     LET cmd='cd ',m_gasdir,'&&start ',httpdispatch
   ELSE
+    --LET cmd="sudo dtruss ",httpdispatch
     LET cmd=httpdispatch
   END IF
   FOR trial=1 TO 4
     --LET filter="ERROR"
     --LET filter="ERROR PROCESS"
-    IF (filter:=fgl_getenv("CATEGORIES_FILTER")) IS NULL THEN
+    IF (filter:=fgl_getenv("FILTER")) IS NULL THEN
       --default filter value
       --other possible values "ERROR" "ALL"
       LET filter="PROCESS"
-      LET redirect_error=TRUE
     END IF
     LET cmd=cmd,' -p ', m_gasdir,sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
     --comment the following line if you want  to disable AUI tree watching
@@ -450,18 +461,21 @@ FUNCTION try_GASalive()
     DEFINE s STRING
     DEFINE found BOOLEAN
     LET c = base.Channel.create()
-    CALL log(sfmt("probe GAS on port:%1",m_port))
+    CALL log(sfmt("probe GAS on port:%1...",m_port))
     TRY 
-        CALL c.openClientSocket("localhost", m_port, "u", 3)
+        CALL c.openClientSocket("127.0.0.1", m_port, "u", 1)
     CATCH
+        CALL log(sfmt("GAS probe failed:%1",err_get(status)))
         RETURN FALSE
     END TRY
+    CALL log("GAS probe ok")
     -- write header
     LET s = "GET /index.html HTTP/1.1"
     CALL writeLine(c, s)
     CALL writeLine(c, "Host: localhost")
     CALL writeLine(c, "User-Agent: fglrun")
     CALL writeLine(c, "Accept: */*")
+    CALL writeLine(c, "Connection: close")
     CALL writeLine(c, "")
 
     LET found = read_response(c)
@@ -474,6 +488,7 @@ FUNCTION read_response(c)
     DEFINE s STRING
     WHILE NOT c.isEof()
       LET s = c.readLine()
+      CALL log(sfmt("GAS answer:%1",s))
       LET s = s.toLowerCase()
       IF (s MATCHES "server: gas/2*")
          OR (s MATCHES "x-fourjs-server: gas/3*") THEN
@@ -517,7 +532,7 @@ END FUNCTION
 
 FUNCTION openBrowser()
   DEFINE url,cmd,browser STRING
-  DEFINE fglhost,host,fglwebrungdc STRING
+  DEFINE fglhost,host,fglwebrungdc,defgbc STRING
   LET fglhost=fgl_getenv("FGLCOMPUTER")
   LET host=IIF(fglhost IS NULL,"localhost",fglhost)
   CASE
@@ -526,7 +541,9 @@ FUNCTION openBrowser()
     WHEN m_gbcdir IS NOT NULL
       LET url=sfmt("http://%1:%2/%3/index.html?app=_%4&t=%5",host,m_port,m_gbcname,m_appname,getTime())
     OTHERWISE
-      LET url=sfmt("http://%1:%2/gwc-js/index.html?app=_%3&t=%4",host,m_port,m_appname,getTime())
+      --LET defgbc=IIF(m_gasversion>=3.2,"gbc","gwc-js")
+      LET defgbc="gwc-js"
+      LET url=sfmt("http://%1:%2/%3/index.html?app=_%3&t=%4",host,m_port,defgbc,m_appname,getTime())
   END CASE
   CALL log(sfmt("start GWC-JS URL:%1",url))
   LET browser=fgl_getenv("BROWSER")
@@ -558,11 +575,24 @@ FUNCTION openBrowser()
 END FUNCTION
 
 FUNCTION getGASURL()
-  RETURN sfmt("http://localhost:%1/ua/r/_%2",m_port,arg_val(1))
+  RETURN sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,os.Path.baseName(arg_val(1)))
 END FUNCTION
 
-FUNCTION connectToGMI() --works only for the emulator
-  DEFINE result STRING
+FUNCTION connectToGMI()
+  DEFINE cmd,result,fglserver STRING
+  IF m_gashost IS NOT NULL THEN
+    LET fglserver=fgl_getenv("GMIFGLSERVER")
+    IF fglserver IS NULL THEN
+      LET fglserver=fgl_getenv("FGLSERVER")
+    END IF
+    IF fglserver IS NULL THEN
+      LET fglserver="localhost"
+    END IF
+    LET cmd=sfmt("FGLPROFILE=%1 FGLSERVER=%2 fglrun %3 %4",os.Path.join(m_mydir,"fglprofile"),fglserver,os.Path.join(m_mydir,"runonserver"),getGASURL())
+    DISPLAY "RUN:",cmd
+    RUN cmd WITHOUT WAITING
+    RETURN
+  END IF
   TRY
     CALL ui.Interface.frontCall("mobile","runOnServer",
           [getGASURL(),5],[result])
@@ -582,7 +612,7 @@ FUNCTION openGDC()
   IF NOT os.Path.executable(gdc) THEN
     DISPLAY "Warning:os.Path not executable:",gdc
   END IF
-  LET cmd=sfmt("%1 -u %2",gdc,getGASURL())
+  LET cmd=sfmt("'%1' -u %2",gdc,getGASURL())
   CALL log(sfmt("GDC cmd:%1",cmd))
   RUN cmd WITHOUT WAITING
 END FUNCTION

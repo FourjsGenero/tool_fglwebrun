@@ -61,19 +61,19 @@ For GAS >= 3.0 you need to set this to 1 if you want the older web client
 $ HTML5=1 fglwebrun prog
 ```
 
-GBCDIR - Sets a custom GBC directory with your customization
+FGLGBCDIR - Sets a custom GBC directory with your customization
 
 Example with a specific GBC directory:
 ```
-$ GBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
+$ FGLGBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
 ```
 
-CATEGORIES_FILTER - Set this to override the GAS categories_filter option,
+FILTER - Set this to override the GAS categories_filter option,
 default is "PROCESS", other possible values are `"ALL" and "ERROR"
 
 Example enabling all log output of GAS
 ```
-$ CATEGORIES_FILTER=ALL fglwebrun prog
+$ FILTER=ALL fglwebrun prog
 ```
 
 # Known problems
