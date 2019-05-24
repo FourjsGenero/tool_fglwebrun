@@ -31,20 +31,7 @@ DEFINE m_mydir STRING
 
 MAIN
   LET m_port=6395 --default GAS port is 6394
-  LET m_gasdir=fgl_getenv("FGLASDIR")
-  LET m_fgldir=fgl_getenv("FGLDIR")
-  LET m_GDC=fgl_getenv("GDC")
-  LET m_html5=fgl_getenv("HTML5")
-  LET m_gashost=fgl_getenv("GASHOST")
-  IF m_gashost IS NULL THEN
-    LET m_gashost="localhost"
-  END IF
-  LET m_mydir=os.Path.fullPath(os.Path.dirname(arg_val(0)))
-  LET m_isMac=NULL
-  IF m_gasdir IS NULL THEN
-    CALL myerr("FGLASDIR not set")
-  END IF
-  LET m_gasversion=getGASVersion()
+  CALL setupVariables()
   IF num_args()<1 THEN
     DISPLAY sfmt("usage:%1 <program> <arg> <arg>",arg_val(0))
     RETURN
@@ -67,6 +54,23 @@ MAIN
     END IF 
   END IF
 END MAIN
+
+FUNCTION setupVariables()
+  LET m_gasdir=fgl_getenv("FGLASDIR")
+  LET m_fgldir=fgl_getenv("FGLDIR")
+  LET m_GDC=fgl_getenv("GDC")
+  LET m_html5=fgl_getenv("HTML5")
+  LET m_gashost=fgl_getenv("GASHOST")
+  IF m_gashost IS NULL THEN
+    LET m_gashost="localhost"
+  END IF
+  LET m_mydir=os.Path.fullPath(os.Path.dirname(arg_val(0)))
+  LET m_isMac=NULL
+  IF m_gasdir IS NULL THEN
+    CALL myerr("FGLASDIR not set")
+  END IF
+  LET m_gasversion=getGASVersion()
+END FUNCTION
 
 --2.41 has no os.Path.fullPath
 FUNCTION fullPath(dir_or_file)
