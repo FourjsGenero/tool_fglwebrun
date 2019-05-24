@@ -285,14 +285,11 @@ END FUNCTION
 
 --write a GAS app entry 
 FUNCTION createGASApp()
-  DEFINE ch base.Channel
-  DEFINE appfile,ext,cmd,line,name STRING
-  DEFINE arg1,basedir,wcdir,xcfdir STRING
-  DEFINE copyenv DYNAMIC ARRAY OF STRING
-  DEFINE code,i,eqIdx INT
+  DEFINE appfile,ext,cmd STRING
+  DEFINE arg1 STRING
+  DEFINE args DYNAMIC ARRAY OF STRING
+  DEFINE code,i INT
   DEFINE invokeShell BOOLEAN
-  DEFINE dollar STRING
-  LET dollar='$'
   LET arg1=arg_val(1)
   LET cmd= "fglrun -r ",arg1,IIF(isWin(),">NUL"," >/dev/null 2>&1")
   --we check if we can deassemble the file, this works for .42m and .42r
@@ -303,35 +300,45 @@ FUNCTION createGASApp()
       CALL myerr("not implemented:.bat invocation GAS") --need to ask Nico
     END IF
   END IF
-  LET ch=base.Channel.create()
   LET m_appname=os.Path.baseName(arg1)
   IF (ext:=os.Path.extension(m_appname)) IS NOT NULL THEN
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
-
   END IF
-  LET xcfdir=getAppDir()
-  LET appfile=os.Path.join(xcfdir,sfmt("_%1.xcf",m_appname))
-  TRY
-    CALL ch.openFile(appfile,"w")
-  CATCH
-    CALL myerr(sfmt("Can't open %1:%2",appfile,err_get(status)))
-  END TRY
-  CALL ch.writeLine(       "<?xml version=\"1.0\"?>")
-  CALL ch.writeLine(       "<APPLICATION Parent=\"defaultgwc\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"http://www.4js.com/ns/gas/2.30/cfextwa.xsd\">" )
+  FOR i=2 TO num_args()
+    LET args[i-1]=arg_val(i)
+  END FOR
+  LET appfile=os.Path.join(getAppDir(),sfmt("_%1.xcf",m_appname))
+  CALL createXCF(appfile,arg1,args,invokeShell)
+END FUNCTION
+
+--create the XCF from a DomDocument
+FUNCTION createXCF(appfile,module,args,invokeShell)
+  DEFINE appfile, module STRING
+  DEFINE args DYNAMIC ARRAY OF STRING
+  DEFINE invokeShell BOOLEAN
+  DEFINE copyenv DYNAMIC ARRAY OF STRING
+  DEFINE i,eqIdx INT
+  DEFINE line,name,basedir,wcdir,value STRING
+  DEFINE doc om.DomDocument
+  DEFINE root,exe,params,out,map,timeout om.DomNode
+  LET doc=om.DomDocument.create("APPLICATION")
+  LET root=doc.getDocumentElement()
+  CALL root.setAttribute("Parent","defaultgwc")
+  CALL root.setAttribute("xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance")
+  CALL root.setAttribute("xsi:noNamespaceSchemaLocation","http://www.4js.com/ns/gas/2.30/cfextwa.xsd")
   IF invokeShell THEN
-    CALL ch.writeLine(     "<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">sh -c </RESOURCE>")
-      
+    CALL createResource(root,"res.dvm.wa","sh -c ")
   ELSE IF fgl_getenv("FGLRUN") IS NOT NULL THEN
-    CALL ch.writeLine(sfmt("<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("FGLRUN")))
+    CALL createResource(root,"res.dvm.wa",fgl_getenv("FGLRUN"))
   END IF
   END IF
   IF fgl_getenv("FGLDIR") IS NOT NULL THEN
-    CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.fgldir\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("FGLDIR")))
+    CALL createResource(root,"res.fgldir",fgl_getenv("FGLDIR"))
   END IF
-  CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.path\" Source=\"INTERNAL\">%1</RESOURCE>",fgl_getenv("PATH")))
-  CALL ch.writeLine(sfmt(  "  <RESOURCE Id=\"res.html5proxy.param\" Source=\"INTERNAL\">%1</RESOURCE>","--development"))
-  --CALL ch.writeLine(       "  <EXECUTION AllowUnsafeSession=\"TRUE\">")
-  CALL ch.writeLine(       "  <EXECUTION>")
+  CALL createResource(root,"res.path",fgl_getenv("PATH"))
+  CALL createResource(root,"res.html5proxy.param","--development")
+  LET exe=root.createChild("EXECUTION")
+  --CALL exe.setAttribute("AllowUnsafeSession","TRUE")
   CALL file_get_output(IIF(isWin(),"set","env"),copyenv) 
   --we simply add every environment var in the .xcf file
   FOR i=1 TO copyenv.getLength() 
@@ -341,54 +348,89 @@ FUNCTION createGASApp()
       IF name.getIndexOf("_FGL_",1)==1 or name.getIndexOf("FGLGUI",1)==1 THEN
         CONTINUE FOR
       END IF
-      IF fgl_getenv(name) IS NOT NULL THEN --check if we actually have this env
-        CALL ch.writeLine(sfmt(  "    <ENVIRONMENT_VARIABLE Id=\"%1\">%2</ENVIRONMENT_VARIABLE>",name,fgl_getenv(name)))
+      IF (value:=fgl_getenv(name)) IS NOT NULL THEN --check if we actually have this env
+        CALL createEnv(exe,name,value)
       END IF
     END IF
   END FOR
+  CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
   IF m_gbcdir IS NOT NULL AND fgl_getversion()<31000 AND
      os.Path.exists(os.Path.join(m_gbcdir,"gbc2.css")) THEN
      --GBC2 needs JSON with FGLGUI set to 2 before FGL 3.10
-      CALL ch.writeLine( "    <ENVIRONMENT_VARIABLE Id=\"FGLGUI\">2</ENVIRONMENT_VARIABLE>")
+      CALL createEnv(exe,"FGLGUI","2")
   END IF
-  CALL ch.writeLine(sfmt(  "    <PATH>%1</PATH>",os.Path.pwd()))
-  CALL ch.writeLine(sfmt(  "    <MODULE>%1</MODULE>",arg1))
-  CALL ch.writeLine(       "    <PARAMETERS>")
-  FOR i=2 TO num_args()
-    CALL ch.writeLine(sfmt(  "      <PARAMETER>%1</PARAMETER>",arg_val(i)))
+  CALL createTag(exe,"PATH",os.Path.pwd())
+  CALL createTag(exe,"MODULE",module)
+  LET params=exe.createChild("PARAMETERS")
+  FOR i=1 TO args.getLength()
+    CALL createTag(params,"PARAMETER",args[i])
   END FOR
-  CALL ch.writeLine(       "    </PARAMETERS>")
-  IF arg1.getCharAt(1)=="/" THEN --we were invoked via absolute path
-    LET basedir=os.Path.dirname(arg1)
+  IF module.getCharAt(1)=="/" THEN --we were invoked via absolute path
+    LET basedir=os.Path.dirname(module)
     LET wcdir=os.Path.join(basedir,"webcomponents")
     IF os.Path.exists(wcdir) THEN
       CALL log(sfmt("add <WEB_COMPONENT_DIRECTORY>:%1",wcdir))
-      CALL ch.writeLine(sfmt("    <WEB_COMPONENT_DIRECTORY>%1</WEB_COMPONENT_DIRECTORY>",wcdir))
+      CALL createTag(exe,"WEB_COMPONENT_DIRECTORY",wcdir)
     END IF
   END IF
-  CALL ch.writeLine(       "  </EXECUTION>")
   CASE
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
-      CALL ch.writeLine(     "  <OUTPUT>")
-      CALL ch.writeLine(sfmt("  <MAP Id=\"DUA_%1\" Allowed=\"TRUE\">",
-            IIF(m_gdc IS NOT NULL,"GDC","GWC")))
-      CALL ch.writeLine(     "  </MAP>")
-      CALL ch.writeLine(     "  </OUTPUT>")
+      LET out=root.createChild("OUTPUT")
+      LET map=out.createChild("MAP")
+      CALL map.setAttribute("Id",sfmt("DUA_%1",IIF(m_gdc IS NOT NULL,"GDC","GWC")))
+      CALL map.setAttribute("Allowed","TRUE")
     WHEN m_gbcdir IS NOT NULL
-      CALL ch.writeLine(       "  <UA_OUTPUT>")
-      CALL ch.writeLine(  sfmt("     <PROXY>%1(res.uaproxy.cmd)</PROXY>",dollar))
-      CALL ch.writeLine(  sfmt("     <PUBLIC_IMAGEPATH>%1(res.public.resources)</PUBLIC_IMAGEPATH>",dollar))
+      LET out=root.createChild("UA_OUTPUT")
+      CALL createTag(out,"PROXY","$(res.uaproxy.cmd)")
+      CALL createTag(out,"PUBLIC_IMAGEPATH","$(res.public.resources)")
       IF m_gasversion>=3.1 THEN
-        CALL ch.writeLine(  sfmt("     <GBC>%1</GBC>",m_gbcname))
+        CALL createTag(out,"GBC",m_gbcname)
       ELSE
-        CALL ch.writeLine(  sfmt("     <GWC-JS>%1</GWC-JS>",m_gbcname))
+        CALL createTag(out,"GWC-JS",m_gbcname)
       END IF
-      CALL ch.writeLine(       "   </UA_OUTPUT>")
+      LET timeout=out.createChild("TIMEOUT")
+      CALL createTag(timeout,       "USER_AGENT","20000")
+      CALL createTag(timeout,       "REQUEST_RESULT","10000")
   END CASE
+  TRY
+    CALL root.writeXml(appfile)
+    CALL log(sfmt("wrote gas app file:%1",appfile))
+  CATCH
+    CALL myerr(sfmt("Can't write %1:%2",appfile,err_get(status)))
+  END TRY
+END FUNCTION
 
-  CALL ch.writeLine(       "</APPLICATION>")
-  CALL ch.close()
-  CALL log(sfmt("wrote gas app file:%1",appfile))
+FUNCTION createContent(parent,content)
+  DEFINE parent,chars om.DomNode
+  DEFINE content STRING
+  LET chars=parent.createChild("@chars")
+  CALL chars.setAttribute("@chars",content)
+END FUNCTION
+
+FUNCTION createResource(parent,resId,content)
+  DEFINE parent,res om.DomNode
+  DEFINE resId,content STRING
+  LET res=parent.createChild("RESOURCE")
+  CALL res.setAttribute("Id",resId)
+  CALL res.setAttribute("Source","INTERNAL")
+  CALL createContent(res,content)
+  --  CALL ch.writeLine(     "<RESOURCE Id=\"res.dvm.wa\" Source=\"INTERNAL\">sh -c </RESOURCE>")
+END FUNCTION
+
+FUNCTION createEnv(parent,varname,content)
+  DEFINE parent,env om.DomNode
+  DEFINE varname,content STRING
+  LET env=parent.createChild("ENVIRONMENT_VARIABLE")
+  CALL env.setAttribute("Id",varname)
+  CALL createContent(env,content)
+  --  CALL ch.writeLine( "    <ENVIRONMENT_VARIABLE Id=\"FGLGUI\">2</ENVIRONMENT_VARIABLE>")
+END FUNCTION
+
+FUNCTION createTag(parent,tagName,content)
+  DEFINE parent,n om.DomNode
+  DEFINE tagName,content STRING
+  LET n=parent.createChild(tagName)
+  CALL createContent(n,content)
 END FUNCTION
 
 FUNCTION getGASExe()
