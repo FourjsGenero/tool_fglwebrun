@@ -13,6 +13,7 @@ DEFINE m_html5 STRING
 DEFINE m_appdata_dir STRING
 DEFINE m_gashost STRING
 DEFINE m_mydir STRING
+DEFINE m_isGBC0 BOOLEAN --checks if we use the GBC prototype
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -100,7 +101,7 @@ END FUNCTION
 --if GBCDIR is set a custom GBC installation is linked into the GAS
 --web dir
 FUNCTION checkGBCDir()
-  DEFINE dummy,code INT
+  DEFINE dummy INT
   DEFINE custom_gbc,indexhtml STRING
   LET m_gbcdir=fgl_getenv("FGLGBCDIR")
   IF m_gbcdir IS NULL THEN
@@ -126,24 +127,31 @@ FUNCTION checkGBCDir()
     CALL myerr(sfmt("No index.html found in %1",m_gbcdir))
   END IF
   LET custom_gbc=os.Path.join(os.Path.join(m_gasdir,"web"),m_gbcname)
+  LET m_isGBC0=os.Path.exists(os.Path.join(m_gbcdir,"gbc0.css"))
   --the linking into FGLASDIR/web is only required for the URL <gbcname>/index.html
   --we would not need to do it for /ua/r/_app links, but /ua/r/_app links
   --require a bootstrap.html
   --remove the old symbolic link
   CALL os.Path.delete(custom_gbc) RETURNING dummy
   CALL log(sfmt("custom_gbc:%1",custom_gbc))
-  IF NOT isWin() IS NULL THEN
-    RUN sfmt("ln -s %1 %2",m_gbcdir,custom_gbc) RETURNING code
-  ELSE
-    RUN sfmt("mklink %1 %2",m_gbcdir,custom_gbc) RETURNING code
-  END IF
-  IF code THEN
-    CALL myerr("could not link GBC into GAS web dir");
-  END IF
+  CALL mklink(m_gbcdir,custom_gbc,"could not link GBC into GAS web dir")
 END FUNCTION
 
 FUNCTION isWin()
   RETURN fgl_getenv("WINDIR") IS NOT NULL
+END FUNCTION
+
+FUNCTION mklink(src,dest,err)
+  DEFINE src,dest,err STRING
+  DEFINE code INT
+  IF NOT isWin() IS NULL THEN
+    RUN sfmt("ln -s %1 %2",src,dest) RETURNING code
+  ELSE
+    RUN sfmt("mklink %1 %2",src,dest) RETURNING code
+  END IF
+  IF code THEN
+    CALL myerr(err)
+  END IF
 END FUNCTION
 
 FUNCTION isMacInt()
@@ -358,11 +366,6 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     END IF
   END FOR
   CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
-  IF m_gbcdir IS NOT NULL AND fgl_getversion()<31000 AND
-     os.Path.exists(os.Path.join(m_gbcdir,"gbc2.css")) THEN
-     --GBC2 needs JSON with FGLGUI set to 2 before FGL 3.10
-      CALL createEnv(exe,"FGLGUI","2")
-  END IF
   CALL createTag(exe,"PATH",os.Path.pwd())
   CALL createTag(exe,"MODULE",module)
   LET params=exe.createChild("PARAMETERS")
@@ -395,6 +398,9 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
       LET timeout=out.createChild("TIMEOUT")
       CALL createTag(timeout,       "USER_AGENT","20000")
       CALL createTag(timeout,       "REQUEST_RESULT","10000")
+      IF m_isGBC0 THEN
+        CALL cpHtmlAssets() 
+      END IF
   END CASE
   TRY
     CALL root.writeXml(appfile)
@@ -402,6 +408,104 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CATCH
     CALL myerr(sfmt("Can't write %1:%2",appfile,err_get(status)))
   END TRY
+END FUNCTION
+
+FUNCTION getPublicDir()
+  RETURN os.Path.join(getAppDataDir(),"public")
+END FUNCTION
+
+FUNCTION cpHtmlAssets()
+  DEFINE public_gbcdir,public_fgldirlib,fgldirlib STRING
+  --enumerate the .42f's and copy matching .html's to the GAS public dir
+  --to protoype html forms
+  DEFINE dh INT
+  DEFINE fname,hname STRING
+  LET dh=os.Path.dirOpen(os.Path.pwd())
+    IF dh == 0 THEN
+    RETURN
+  END IF
+  WHILE (fname:=os.Path.dirNext(dh)) IS NOT NULL
+      IF fname IS NULL OR fname=="." OR 
+        NVL(os.Path.extension(fname),"NULL")<>"42f" THEN
+        CONTINUE WHILE
+      END IF
+      LET hname = fname.subString(1,fname.getLength()-3),"html"
+      --DISPLAY "fname:",fname,",hname:",hname
+      IF os.Path.exists(hname) THEN
+        CALL cpHtmlAsset(hname)
+      END IF
+  END WHILE
+  CALL os.Path.dirclose(dh)
+  --link the 2 form2html resource dirs into public
+  IF os.Path.exists("gbcdir") AND os.Path.isLink("gbcdir") THEN
+    LET public_gbcdir=os.Path.join(getPublicDir(),"gbcdir")
+    CALL os.Path.delete(public_gbcdir) RETURNING status
+    CALL mklink(os.Path.fullPath("gbcdir"),public_gbcdir,"Can't link ./gbcdir into public")
+  END IF
+  IF os.Path.exists("fgldirlib") AND os.Path.isLink("fgldirlib") THEN
+    LET public_fgldirlib=os.Path.join(getPublicDir(),"fgldirlib")
+    CALL os.Path.delete(public_fgldirlib) RETURNING status
+    LET fgldirlib=os.Path.join(base.Application.getFglDir(),"lib")
+    CALL mklink(fgldirlib,public_fgldirlib,"Cant link $FGLDIR/lib into public")
+  END IF
+END FUNCTION
+
+--load the html file and look for additional assets
+--to copy
+FUNCTION cpHtmlAsset(hname)
+  DEFINE hname STRING
+  DEFINE d om.DomDocument
+  DEFINE r om.DomNode
+  TRY
+    LET d=om.DomDocument.createFromXmlFile(hname)
+  CATCH
+    DISPLAY "cpHtmlAsset: failed to read:",hname
+    RETURN
+  END TRY
+  LET r=d.getDocumentElement()
+  CALL searchHtmlAssets(r,"link","href")
+  CALL searchHtmlAssets(r,"script","src")
+  CALL cp2Public(os.Path.baseName(hname))
+END FUNCTION
+
+FUNCTION searchHtmlAssets(r,what,srcAttr)
+  DEFINE r om.DomNode
+  DEFINE what,srcAttr,src STRING
+  DEFINE l om.NodeList
+  DEFINE ass om.DomNode
+  DEFINE i,questpos INT
+  LET l=r.selectByTagName(what)
+  FOR i=1 TO l.getLength()
+    LET ass=l.item(i)
+    LET src=ass.getAttribute(srcAttr)
+    IF src IS NOT NULL THEN
+      LET questpos=src.getIndexOf("?",1) --internal error when base.getIndexOf
+      IF questpos>0 THEN
+        LET src=src.subString(1,questpos-1)
+      END IF
+      IF os.Path.exists(src) THEN
+        CALL cp2Public(src)
+      END IF
+    END IF
+  END FOR
+END FUNCTION
+
+--copies an html asset to the GAS public dir
+--this has the effect that the assets are cached
+FUNCTION cp2Public(src)
+  DEFINE src,dest STRING
+  IF NVL(os.Path.dirname(src),"NULL")!="." THEN
+    DISPLAY "copy2Public:do not copy asset not in pwd:",src
+    RETURN
+  END IF
+  LET dest=os.Path.join(getPublicDir(),src)
+  IF os.Path.exists(dest) AND file_equal(src,dest,FALSE) THEN
+    DISPLAY sfmt("cp2Public: htmlAsset '%1' already copied",src)
+    RETURN
+  END IF
+  IF NOT os.Path.copy(src,dest) THEN
+    DISPLAY sfmt("cp2Public: can't copy htmlAsset '%1' to '%2'",src,dest)
+  END IF
 END FUNCTION
 
 FUNCTION createContent(parent,content)
@@ -604,7 +708,7 @@ FUNCTION openBrowser()
       LET cmd=sfmt('fglrun "%1" "%2"',fglwebrungdc,url)
       DISPLAY "cmd:",cmd
     OTHERWISE
-      LET cmd=sfmt("'%1' %2",fgl_getenv("BROWSER"),url)
+      LET cmd=sfmt('"%1" %2',fgl_getenv("BROWSER"),url)
     END CASE
   ELSE
     CASE
@@ -731,4 +835,25 @@ FUNCTION copyWCAssets(sub,component)
     END IF
   END WHILE
   CALL os.Path.dirClose(dirhandle)
+END FUNCTION
+
+FUNCTION file_equal(f1, f2, ignorecase)
+  DEFINE f1, f2 STRING
+  DEFINE ignorecase BOOLEAN
+  DEFINE cmd,opt STRING
+  DEFINE code INTEGER
+  LET opt = " "
+  IF fgl_getenv("WINDIR") THEN
+    IF ignorecase THEN
+      LET opt = "/c"
+    END IF
+    LET cmd = "fc " || opt || " " || f1 || " " || f2
+  ELSE
+    IF ignorecase THEN
+      LET opt = "-i"
+    END IF
+    LET cmd = "diff " || opt || " " || f1 || " " || f2
+  END IF
+  RUN cmd RETURNING code
+  RETURN (code == 0)
 END FUNCTION

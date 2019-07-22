@@ -1,10 +1,8 @@
-.SUFFIXES: .4gl .42m .per .42f
+%.42f: %.per 
+	fglform -M -Wall $<
 
-.per.42f:
-	fglform -M -W all $<
-
-.4gl.42m:
-	fglcomp -M -W all $<
+%.42m: %.4gl 
+	fglcomp -M -r -Wall $*
 
 
 ifndef FGLGBCDIR
@@ -19,7 +17,8 @@ GBCOPT=FGLGBCDIR=$(FGLGBCDIR)
 all: fglwebrun.42m fglwebrungdc.42m runonserver.42m
 
 demo: fglwebrun demo.42f demo.42m
-	FILTER=ALL ./fglwebrun demo a b
+#	FILTER=ALL ./fglwebrun demo a b
+	./fglwebrun demo a b
 
 gmiurdemo: fglwebrun demo.42f demo.42m
 	$(GBCOPT) GMI=1 FGLPROFILE=universal ./fglwebrun demo a b

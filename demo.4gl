@@ -3,11 +3,12 @@ MAIN
   MESSAGE "arg1:",arg_val(1),",arg2:",arg_val(2)
   MENU 
     COMMAND "Long Sleep"
-      SLEEP 3
+      SLEEP 10
+      ERROR "SLEEP ready"
     COMMAND "TEST Message"
       MESSAGE "TEST"
-    ON IDLE 10
-      MESSAGE "IDLE"
+    --ON IDLE 10
+    --  MESSAGE "IDLE"
     COMMAND "Webcomponent"
       CALL webco()
     COMMAND "Exit"
