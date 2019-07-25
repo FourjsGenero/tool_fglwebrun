@@ -708,7 +708,11 @@ FUNCTION openBrowser()
       LET cmd=sfmt('fglrun "%1" "%2"',fglwebrungdc,url)
       DISPLAY "cmd:",cmd
     OTHERWISE
-      LET cmd=sfmt('"%1" %2',fgl_getenv("BROWSER"),url)
+      IF isMac() THEN
+        LET cmd=sfmt("open -a %1 %2",quote(fgl_getenv("BROWSER")),url)
+      ELSE
+        LET cmd=sfmt('"%1" %2',fgl_getenv("BROWSER"),url)
+      END IF
     END CASE
   ELSE
     CASE
