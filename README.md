@@ -51,7 +51,7 @@ BROWSER - Set this to override the default browser
 
 Example on Mac running the app with Google Chrome:
 ```
-$ BROWSER=/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome fglwebrun prog
+$ BROWSER="Google Chrome" fglwebrun prog
 ```
 HTML5 - Enable the GWC HTML5 theme
 
@@ -81,4 +81,5 @@ $ FILTER=ALL fglwebrun prog
 If httpdispatch was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.
 Unfortunately there is no httpdispatch configuration equivalent to a GDC started with -X option (terminate after the last fglrun closed the connection...)
 The only solution is to kill httpdispatch manually.
+The other solution is to just change the terminal once GAS is up and running, another invocation of fglwebrun will take the same GAS.
 
