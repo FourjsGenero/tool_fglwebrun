@@ -7,6 +7,7 @@ MAIN
       ERROR "SLEEP ready"
     COMMAND "TEST Message"
       MESSAGE "TEST"
+      DISPLAY "TEST"
     --ON IDLE 10
     --  MESSAGE "IDLE"
     COMMAND "Webcomponent"

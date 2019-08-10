@@ -13,7 +13,6 @@ DEFINE m_html5 STRING
 DEFINE m_appdata_dir STRING
 DEFINE m_gashost STRING
 DEFINE m_mydir STRING
-DEFINE m_isGBC0 BOOLEAN --checks if we use the GBC prototype
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -69,6 +68,12 @@ FUNCTION setupVariables()
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
     CALL myerr("FGLASDIR not set")
+  ELSE
+    LET m_gasdir=replacechar(m_gasdir,'"','')
+    IF NOT os.Path.exists(m_gasdir) THEN
+      CALL myerr("FGLASDIR '%1' does not exist")
+    END IF
+    LET m_gasdir=os.Path.fullPath(m_gasdir)
   END IF
   LET m_gasversion=getGASVersion()
 END FUNCTION
@@ -98,11 +103,11 @@ FUNCTION fullPath(dir_or_file)
   RETURN full
 END FUNCTION
 
---if GBCDIR is set a custom GBC installation is linked into the GAS
---web dir
+--if GBCDIR is set the _default file is created if necessary
 FUNCTION checkGBCDir()
-  DEFINE dummy INT
-  DEFINE custom_gbc,indexhtml STRING
+  --DEFINE dummy INT
+  DEFINE indexhtml,dir_of_gbc_dir,_default,l STRING
+  DEFINE chan base.Channel
   LET m_gbcdir=fgl_getenv("FGLGBCDIR")
   IF m_gbcdir IS NULL THEN
     LET m_gbcdir=fgl_getenv("GBCDIR")
@@ -110,11 +115,12 @@ FUNCTION checkGBCDir()
       RETURN
     END IF
   END IF
+  LET m_gbcdir=replacechar(m_gbcdir,'"','')
   IF (NOT os.Path.exists(m_gbcdir)) OR 
      (NOT os.Path.isDirectory(m_gbcdir)) THEN
     CALL myerr(sfmt("(FGL)GBCDIR %1 is not a directory",m_gbcdir))
   END IF
-  LET m_gbcdir=fullPath(m_gbcdir);
+  LET m_gbcdir=fullPath(m_gbcdir)
   LET m_gbcname=os.Path.baseName(m_gbcdir);
   IF m_gbcname IS NULL THEN
     CALL myerr("GBC dirname must not be NULL")
@@ -126,15 +132,27 @@ FUNCTION checkGBCDir()
   IF NOT os.Path.exists(indexhtml) THEN
     CALL myerr(sfmt("No index.html found in %1",m_gbcdir))
   END IF
-  LET custom_gbc=os.Path.join(os.Path.join(m_gasdir,"web"),m_gbcname)
-  LET m_isGBC0=os.Path.exists(os.Path.join(m_gbcdir,"gbc0.css"))
-  --the linking into FGLASDIR/web is only required for the URL <gbcname>/index.html
-  --we would not need to do it for /ua/r/_app links, but /ua/r/_app links
-  --require a bootstrap.html
-  --remove the old symbolic link
-  CALL os.Path.delete(custom_gbc) RETURNING dummy
-  CALL log(sfmt("custom_gbc:%1",custom_gbc))
-  CALL mklink(m_gbcdir,custom_gbc,"could not link GBC into GAS web dir")
+  LET dir_of_gbc_dir=os.Path.dirname(m_gbcdir)
+  LET chan=base.Channel.create()
+  LET _default=os.Path.join(dir_of_gbc_dir,"_default")
+  IF os.Path.exists(_default) THEN
+    CALL chan.openFile(_default,"r")
+    LET l=chan.readLine()
+    CALL chan.close()
+    IF l.equals(m_gbcname) THEN
+      --gbc sub dir already specified
+      CALL log(sfmt("found the right gbc name:%1 in %2",m_gbcname,_default))
+      RETURN
+    END IF
+  END IF
+  TRY
+    CALL chan.openFile(_default,"w")
+  CATCH
+    CALL myerr(sfmt("can't write GBC _default file '%1'",_default))
+  END TRY
+  --since GBC we need a _default entry ...
+  CALL chan.writeLine(m_gbcname)
+  CALL chan.close()
 END FUNCTION
 
 FUNCTION isWin()
@@ -196,9 +214,16 @@ FUNCTION file_get_output(program,arr)
   CALL c.close()
 END FUNCTION
 
+FUNCTION already_quoted(path)
+  DEFINE path,first,last STRING
+  LET first=NVL(path.getCharAt(1),"NULL")
+  LET last=NVL(path.getCharAt(path.getLength()),"NULL")
+  RETURN (first=="'" AND last=="'") OR (first=='"' AND last=='"')
+END FUNCTION
+
 FUNCTION quote(path)
   DEFINE path STRING
-  IF path.getIndexOf(" ",1)>0 THEN
+  IF path.getIndexOf(" ",1)>0 AND NOT already_quoted(path) THEN
     LET path='"',path,'"'
   END IF
   RETURN path
@@ -398,9 +423,6 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
       LET timeout=out.createChild("TIMEOUT")
       CALL createTag(timeout,       "USER_AGENT","20000")
       CALL createTag(timeout,       "REQUEST_RESULT","10000")
-      IF m_isGBC0 THEN
-        CALL cpHtmlAssets() 
-      END IF
   END CASE
   TRY
     CALL root.writeXml(appfile)
@@ -408,104 +430,6 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CATCH
     CALL myerr(sfmt("Can't write %1:%2",appfile,err_get(status)))
   END TRY
-END FUNCTION
-
-FUNCTION getPublicDir()
-  RETURN os.Path.join(getAppDataDir(),"public")
-END FUNCTION
-
-FUNCTION cpHtmlAssets()
-  DEFINE public_gbcdir,public_fgldirlib,fgldirlib STRING
-  --enumerate the .42f's and copy matching .html's to the GAS public dir
-  --to protoype html forms
-  DEFINE dh INT
-  DEFINE fname,hname STRING
-  LET dh=os.Path.dirOpen(os.Path.pwd())
-    IF dh == 0 THEN
-    RETURN
-  END IF
-  WHILE (fname:=os.Path.dirNext(dh)) IS NOT NULL
-      IF fname IS NULL OR fname=="." OR 
-        NVL(os.Path.extension(fname),"NULL")<>"42f" THEN
-        CONTINUE WHILE
-      END IF
-      LET hname = fname.subString(1,fname.getLength()-3),"html"
-      --DISPLAY "fname:",fname,",hname:",hname
-      IF os.Path.exists(hname) THEN
-        CALL cpHtmlAsset(hname)
-      END IF
-  END WHILE
-  CALL os.Path.dirclose(dh)
-  --link the 2 form2html resource dirs into public
-  IF os.Path.exists("gbcdir") AND os.Path.isLink("gbcdir") THEN
-    LET public_gbcdir=os.Path.join(getPublicDir(),"gbcdir")
-    CALL os.Path.delete(public_gbcdir) RETURNING status
-    CALL mklink(os.Path.fullPath("gbcdir"),public_gbcdir,"Can't link ./gbcdir into public")
-  END IF
-  IF os.Path.exists("fgldirlib") AND os.Path.isLink("fgldirlib") THEN
-    LET public_fgldirlib=os.Path.join(getPublicDir(),"fgldirlib")
-    CALL os.Path.delete(public_fgldirlib) RETURNING status
-    LET fgldirlib=os.Path.join(base.Application.getFglDir(),"lib")
-    CALL mklink(fgldirlib,public_fgldirlib,"Cant link $FGLDIR/lib into public")
-  END IF
-END FUNCTION
-
---load the html file and look for additional assets
---to copy
-FUNCTION cpHtmlAsset(hname)
-  DEFINE hname STRING
-  DEFINE d om.DomDocument
-  DEFINE r om.DomNode
-  TRY
-    LET d=om.DomDocument.createFromXmlFile(hname)
-  CATCH
-    DISPLAY "cpHtmlAsset: failed to read:",hname
-    RETURN
-  END TRY
-  LET r=d.getDocumentElement()
-  CALL searchHtmlAssets(r,"link","href")
-  CALL searchHtmlAssets(r,"script","src")
-  CALL cp2Public(os.Path.baseName(hname))
-END FUNCTION
-
-FUNCTION searchHtmlAssets(r,what,srcAttr)
-  DEFINE r om.DomNode
-  DEFINE what,srcAttr,src STRING
-  DEFINE l om.NodeList
-  DEFINE ass om.DomNode
-  DEFINE i,questpos INT
-  LET l=r.selectByTagName(what)
-  FOR i=1 TO l.getLength()
-    LET ass=l.item(i)
-    LET src=ass.getAttribute(srcAttr)
-    IF src IS NOT NULL THEN
-      LET questpos=src.getIndexOf("?",1) --internal error when base.getIndexOf
-      IF questpos>0 THEN
-        LET src=src.subString(1,questpos-1)
-      END IF
-      IF os.Path.exists(src) THEN
-        CALL cp2Public(src)
-      END IF
-    END IF
-  END FOR
-END FUNCTION
-
---copies an html asset to the GAS public dir
---this has the effect that the assets are cached
-FUNCTION cp2Public(src)
-  DEFINE src,dest STRING
-  IF NVL(os.Path.dirname(src),"NULL")!="." THEN
-    DISPLAY "copy2Public:do not copy asset not in pwd:",src
-    RETURN
-  END IF
-  LET dest=os.Path.join(getPublicDir(),src)
-  IF os.Path.exists(dest) AND file_equal(src,dest,FALSE) THEN
-    DISPLAY sfmt("cp2Public: htmlAsset '%1' already copied",src)
-    RETURN
-  END IF
-  IF NOT os.Path.copy(src,dest) THEN
-    DISPLAY sfmt("cp2Public: can't copy htmlAsset '%1' to '%2'",src,dest)
-  END IF
 END FUNCTION
 
 FUNCTION createContent(parent,content)
@@ -553,16 +477,11 @@ FUNCTION getGASExe()
 END FUNCTION
 
 FUNCTION runGAS()
-  DEFINE cmd,httpdispatch,filter STRING
+  DEFINE cmd,httpdispatch,filter,startgas STRING
   DEFINE trial,i INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
-  IF isWin() THEN
-    LET cmd='cd ',m_gasdir,'&&start ',httpdispatch
-  ELSE
-    --LET cmd="sudo dtruss ",httpdispatch
-    LET cmd=httpdispatch
-  END IF
+  LET cmd=quote(httpdispatch)
   FOR trial=1 TO 4
     --LET filter="ERROR"
     --LET filter="ERROR PROCESS"
@@ -571,7 +490,7 @@ FUNCTION runGAS()
       --other possible values "ERROR" "ALL"
       LET filter="PROCESS"
     END IF
-    LET cmd=cmd,' -p ', m_gasdir,sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
+    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
     --comment the following line if you want  to disable AUI tree watching
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
     IF NOT isWin() THEN
@@ -594,8 +513,13 @@ FUNCTION runGAS()
     END IF
     
     CALL log(sfmt("RUN %1 ...",cmd))
+    IF isWin() THEN
+      LET startgas=os.Path.join(fgl_getenv("TEMP"),"startgas_fglwebrun.bat")
+      CALL writeGASBat(startgas,cmd)
+      LET cmd=sfmt("start %1",startgas)
+    END IF
     RUN cmd WITHOUT WAITING
-    FOR i=1 TO 360 
+    FOR i=1 TO 30 
       IF try_GASalive() THEN
         RETURN
       END IF
@@ -604,6 +528,15 @@ FUNCTION runGAS()
     LET m_port=m_port+1
   END FOR
   CALL myerr("Can't startup GAS, check your configuration, FGLASDIR")
+END FUNCTION
+
+FUNCTION writeGASBat(bat,cmd)
+  DEFINE bat,cmd STRING
+  DEFINE chan base.Channel
+  LET chan=base.Channel.create()
+  CALL chan.openFile(bat,"w")
+  CALL chan.writeLine(cmd)
+  CALL chan.close()
 END FUNCTION
 
 FUNCTION try_GASalive()
@@ -689,7 +622,7 @@ FUNCTION openBrowser()
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
       LET url=sfmt("http://%1:%2/wa/r/_%3?t=%4",host,m_port,m_appname,getTime())
     WHEN m_gbcdir IS NOT NULL
-      LET url=sfmt("http://%1:%2/%3/index.html?app=_%4&t=%5",host,m_port,m_gbcname,m_appname,getTime())
+      LET url=getGASURL()
     OTHERWISE
       --LET defgbc=IIF(m_gasversion>=3.2,"gbc","gwc-js")
       LET defgbc="gwc-js"
@@ -733,7 +666,7 @@ FUNCTION getGASURL()
 END FUNCTION
 
 FUNCTION connectToGMI()
-  DEFINE cmd,result,fglserver STRING
+  DEFINE cmd,result,fglserver,fglprofile STRING
   IF m_gashost IS NOT NULL THEN
     LET fglserver=fgl_getenv("GMIFGLSERVER")
     IF fglserver IS NULL THEN
@@ -742,7 +675,13 @@ FUNCTION connectToGMI()
     IF fglserver IS NULL THEN
       LET fglserver="localhost"
     END IF
-    LET cmd=sfmt("FGLPROFILE=%1 FGLSERVER=%2 fglrun %3 %4",os.Path.join(m_mydir,"fglprofile"),fglserver,os.Path.join(m_mydir,"runonserver"),getGASURL())
+    CALL fgl_setenv("FGLSERVER",fglserver)
+    LET fglprofile=fgl_getenv("FGLPROFILE")
+    IF NOT os.Path.exists(fglprofile) THEN
+      LET fglprofile=os.Path.join(m_mydir,"fglprofile")
+    END IF
+    CALL fgl_setenv("FGLPROFILE",fglprofile)
+    LET cmd=sfmt("fglrun %1 %2",os.Path.join(m_mydir,"runonserver"),getGASURL())
     DISPLAY "RUN:",cmd
     RUN cmd WITHOUT WAITING
     RETURN
@@ -839,6 +778,20 @@ FUNCTION copyWCAssets(sub,component)
     END IF
   END WHILE
   CALL os.Path.dirClose(dirhandle)
+END FUNCTION
+
+FUNCTION replacechar(fname,chartoreplace,replacechar)
+  DEFINE fname,chartoreplace,replacechar STRING
+  DEFINE buf base.StringBuffer
+  DEFINE prev,idx INTEGER
+  LET buf=base.StringBuffer.create()
+  CALL buf.append(fname)
+  LET prev=1
+  WHILE (idx:=buf.getIndexOf(chartoreplace,prev)) <> 0
+    CALL buf.replaceAt(idx,1,replacechar)
+    LET prev=idx
+  END WHILE
+  RETURN buf.toString()
 END FUNCTION
 
 FUNCTION file_equal(f1, f2, ignorecase)

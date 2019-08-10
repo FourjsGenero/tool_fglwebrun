@@ -1,3 +1,7 @@
+ifdef windir
+WINDIR=$(windir)
+endif
+
 %.42f: %.per 
 	fglform -M -Wall $<
 
@@ -12,24 +16,44 @@ ifneq ($(wildcard $(FGLDIR)/web_utilities/gbc/gbc),)
 endif
 endif
 
-GBCOPT=FGLGBCDIR=$(FGLGBCDIR)
+ifdef WINDIR
+
+define _env
+set $(1)=$(2)&&
+endef
+FGLWEBRUN=fglwebrun
+
+else
+
+define _env
+$(1)=$(2) 
+endef
+FGLWEBRUN=./fglwebrun
+
+endif
+GBCOPT=$(call _env,FGLGBCDIR,$(FGLGBCDIR))
+UROPT=$(call _env,FGLPROFILE,universal)
 
 all: fglwebrun.42m fglwebrungdc.42m runonserver.42m
 
 demo: fglwebrun demo.42f demo.42m
-#	FILTER=ALL ./fglwebrun demo a b
-	./fglwebrun demo a b
+#	FILTER=ALL $(FGLWEBRUN) demo a b
+	$(FGLWEBRUN) demo a b
 
 gmiurdemo: fglwebrun demo.42f demo.42m
-	$(GBCOPT) GMI=1 FGLPROFILE=universal ./fglwebrun demo a b
+	$(call _env,GMI,1)$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 
 gdcurdemo: fglwebrun demo.42f demo.42m
 #note you must specify GDC
+ifndef WINDIR
 	if [ -z $(GDC) ]; then echo "GDC executable not set"; exit 1; fi
-	GDC=$(GDC) $(GBCOPT) FGLPROFILE=universal ./fglwebrun demo a b
+endif
+	$(call _env,GDC,$(GDC))$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 
 echo:
-	echo "FGLGBCDIR=$(FGLGBCDIR)"
+	@echo "FGLGBCDIR=$(FGLGBCDIR)"
+	@echo "GBCOPT=$(GBCOPT)"
+	@echo "UROPT=$(UROPT)"
 
 clean_prog:
 	rm -f fglwebrun.42m fglwebrungdc.42m runonserver.42m
