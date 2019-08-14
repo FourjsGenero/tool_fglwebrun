@@ -333,9 +333,6 @@ FUNCTION createGASApp()
   RUN cmd RETURNING code
   IF code THEN --we could not find a valid .42r or .42m with the given argument
     LET invokeShell=TRUE
-    IF isWin() THEN
-      CALL myerr("not implemented:.bat invocation GAS") --need to ask Nico
-    END IF
   END IF
   LET m_appname=os.Path.baseName(arg1)
   IF (ext:=os.Path.extension(m_appname)) IS NOT NULL THEN
@@ -364,7 +361,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CALL root.setAttribute("xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance")
   CALL root.setAttribute("xsi:noNamespaceSchemaLocation","http://www.4js.com/ns/gas/2.30/cfextwa.xsd")
   IF invokeShell THEN
-    CALL createResource(root,"res.dvm.wa","sh -c ")
+    CALL createResource(root,"res.dvm.wa",IIF(isWin(),"cmd /c ","sh -c "))
   ELSE IF fgl_getenv("FGLRUN") IS NOT NULL THEN
     CALL createResource(root,"res.dvm.wa",fgl_getenv("FGLRUN"))
   END IF
@@ -390,7 +387,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
       END IF
     END IF
   END FOR
-  CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
+  --CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
   CALL createTag(exe,"PATH",os.Path.pwd())
   CALL createTag(exe,"MODULE",module)
   LET params=exe.createChild("PARAMETERS")
