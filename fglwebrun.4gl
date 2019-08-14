@@ -361,7 +361,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CALL root.setAttribute("xmlns:xsi","http://www.w3.org/2001/XMLSchema-instance")
   CALL root.setAttribute("xsi:noNamespaceSchemaLocation","http://www.4js.com/ns/gas/2.30/cfextwa.xsd")
   IF invokeShell THEN
-    CALL createResource(root,"res.dvm.wa",IIF(isWin(),"cmd /c ","sh -c "))
+    CALL createResource(root,"res.dvm.wa",IIF(isWin(),"cmd /c ","sh "))
   ELSE IF fgl_getenv("FGLRUN") IS NOT NULL THEN
     CALL createResource(root,"res.dvm.wa",fgl_getenv("FGLRUN"))
   END IF
