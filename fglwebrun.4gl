@@ -218,13 +218,22 @@ FUNCTION already_quoted(path)
   DEFINE path,first,last STRING
   LET first=NVL(path.getCharAt(1),"NULL")
   LET last=NVL(path.getCharAt(path.getLength()),"NULL")
+  IF isWin() THEN
+    RETURN (first=='"' AND last=='"')
+  END IF
   RETURN (first=="'" AND last=="'") OR (first=='"' AND last=='"')
 END FUNCTION
 
 FUNCTION quote(path)
   DEFINE path STRING
-  IF path.getIndexOf(" ",1)>0 AND NOT already_quoted(path) THEN
-    LET path='"',path,'"'
+  IF path.getIndexOf(" ",1)>0 THEN
+    IF NOT already_quoted(path) THEN
+      LET path='"',path,'"'
+    END IF
+  ELSE
+    IF already_quoted(path) AND isWin() THEN --remove quotes(Windows)
+      LET path=path.subString(2,path.getLength()-1)
+    END IF
   END IF
   RETURN path
 END FUNCTION
@@ -327,17 +336,19 @@ FUNCTION createGASApp()
   DEFINE args DYNAMIC ARRAY OF STRING
   DEFINE code,i INT
   DEFINE invokeShell BOOLEAN
-  LET arg1=arg_val(1)
+  LET arg1=os.Path.fullPath(arg_val(1))
   LET cmd= "fglrun -r ",arg1,IIF(isWin(),">NUL"," >/dev/null 2>&1")
   --we check if we can deassemble the file, this works for .42m and .42r
   RUN cmd RETURNING code
   IF code THEN --we could not find a valid .42r or .42m with the given argument
     LET invokeShell=TRUE
+    CALL log("invokeShell")
   END IF
   LET m_appname=os.Path.baseName(arg1)
   IF (ext:=os.Path.extension(m_appname)) IS NOT NULL THEN
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
   END IF
+  CALL log(sfmt("m_appname:%1",m_appname))
   FOR i=2 TO num_args()
     LET args[i-1]=arg_val(i)
   END FOR
@@ -379,7 +390,8 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     LET line=copyenv[i]
     IF (eqIdx:=line.getIndexOf("=",1))>0 THEN
       LET name=line.subString(1,eqIdx-1) --may be we need to leave out some vars...candidate is _FGL_PPID
-      IF name.getIndexOf("_FGL_",1)==1 or name.getIndexOf("FGLGUI",1)==1 THEN
+      IF name.getIndexOf("_FGL_",1)==1 or name.getIndexOf("FGLGUI",1)==1 
+        OR name.getIndexOf("FGL_VMPROXY",1)==1 THEN
         CONTINUE FOR
       END IF
       IF (value:=fgl_getenv(name)) IS NOT NULL THEN --check if we actually have this env
@@ -611,7 +623,7 @@ FUNCTION getTime()
 END FUNCTION
 
 FUNCTION openBrowser()
-  DEFINE url,cmd,browser STRING
+  DEFINE url,cmd,browser,lbrowser,pre STRING
   DEFINE fglhost,host,fglwebrungdc,defgbc STRING
   LET fglhost=fgl_getenv("FGLCOMPUTER")
   LET host=IIF(fglhost IS NULL,"localhost",fglhost)
@@ -641,7 +653,13 @@ FUNCTION openBrowser()
       IF isMac() THEN
         LET cmd=sfmt("open -a %1 %2",quote(fgl_getenv("BROWSER")),url)
       ELSE
-        LET cmd=sfmt('"%1" %2',fgl_getenv("BROWSER"),url)
+        LET lbrowser=browser.toLowerCase()
+        --no path separator and no .exe given: we use start
+        IF isWin() AND browser.getIndexOf("\\",1)==0 AND
+          lbrowser.getIndexOf(".exe",1)==0 THEN
+          LET pre="start "
+        END IF
+        LET cmd=sfmt('%1%2 %3',pre,quote(browser),url)
       END IF
     END CASE
   ELSE
@@ -659,7 +677,7 @@ FUNCTION openBrowser()
 END FUNCTION
 
 FUNCTION getGASURL()
-  RETURN sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,os.Path.baseName(arg_val(1)))
+  RETURN sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,m_appname)
 END FUNCTION
 
 FUNCTION connectToGMI()
