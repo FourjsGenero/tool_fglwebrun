@@ -106,13 +106,21 @@ END FUNCTION
 --if GBCDIR is set the _default file is created if necessary
 FUNCTION checkGBCDir()
   --DEFINE dummy INT
-  DEFINE indexhtml,dir_of_gbc_dir,_default,l STRING
+  DEFINE indexhtml,dir_of_gbc_dir,_default,l,trial STRING
   DEFINE chan base.Channel
   LET m_gbcdir=fgl_getenv("FGLGBCDIR")
   IF m_gbcdir IS NULL THEN
     LET m_gbcdir=fgl_getenv("GBCDIR")
     IF m_gbcdir IS NULL THEN
-      RETURN
+      LET trial=os.Path.join(m_fgldir,"web_utilities")
+      LET trial=os.Path.join(trial,"gbc")
+      LET trial=os.Path.join(trial,"gbc")
+      IF os.Path.exists(trial) AND os.Path.isDirectory(trial) AND
+        os.Path.exists(os.Path.join(trial,"VERSION")) THEN
+        LET m_gbcdir=trial
+      ELSE
+        RETURN
+      END IF
     END IF
   END IF
   LET m_gbcdir=replacechar(m_gbcdir,'"','')
@@ -337,7 +345,7 @@ FUNCTION createGASApp()
   DEFINE code,i INT
   DEFINE invokeShell BOOLEAN
   LET arg1=os.Path.fullPath(arg_val(1))
-  LET cmd= "fglrun -r ",arg1,IIF(isWin(),">NUL"," >/dev/null 2>&1")
+  LET cmd= "fglrun -r ",quote(arg1),IIF(isWin(),">NUL"," >/dev/null 2>&1")
   --we check if we can deassemble the file, this works for .42m and .42r
   RUN cmd RETURNING code
   IF code THEN --we could not find a valid .42r or .42m with the given argument
@@ -647,7 +655,7 @@ FUNCTION openBrowser()
       RETURN
     WHEN browser=="gdc"
       LET fglwebrungdc=os.Path.join(fgl_getenv("FGLWEBRUNDIR"),"fglwebrungdc")
-      LET cmd=sfmt('fglrun "%1" "%2"',fglwebrungdc,url)
+      LET cmd=sfmt('fglrun %1 %2',quote(fglwebrungdc),url)
       DISPLAY "cmd:",cmd
     OTHERWISE
       IF isMac() THEN
