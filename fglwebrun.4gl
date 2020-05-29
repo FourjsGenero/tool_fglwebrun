@@ -741,7 +741,8 @@ FUNCTION checkWebComponentInstall()
   DEFINE sub,html,component,webcomponents STRING
   DEFINE dirhandle INT
   LET webcomponents=os.Path.join(os.Path.pwd(),"webcomponents")
-  IF os.Path.exists(webcomponents) AND os.Path.isDirectory(webcomponents) THEN
+  IF os.Path.exists(webcomponents) AND 
+    (os.Path.isDirectory(webcomponents) OR os.Path.isLink(webcomponents)) THEN
     LET dirhandle=os.Path.dirOpen(webcomponents)
     WHILE (component:=os.Path.dirNext(dirhandle)) IS NOT NULL
       IF component=="." OR component==".." THEN
