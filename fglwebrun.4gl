@@ -164,7 +164,7 @@ FUNCTION checkGBCDir()
 END FUNCTION
 
 FUNCTION isWin()
-  RETURN fgl_getenv("WINDIR") IS NOT NULL
+  RETURN fgl_getenv("WINDIR") IS NOT NULL OR fgl_getenv("windir") IS NOT NULL
 END FUNCTION
 
 FUNCTION mklink(src,dest,err)
@@ -311,7 +311,7 @@ END FUNCTION
 FUNCTION getAppDataDir()
   DEFINE xcfdir STRING
   IF m_appdata_dir IS NULL THEN 
-    LET m_appdata_dir=os.Path.join(os.Path.homeDir(),".gas_appdata")
+    LET m_appdata_dir=os.Path.join(os.Path.homeDir(),IIF(isWin(),"gas_appdata",".gas_appdata"))
     DISPLAY "m_appdata_dir:",m_appdata_dir
     LET xcfdir=os.Path.join(m_appdata_dir,"app")
     DISPLAY "xcfdir:",xcfdir
@@ -517,13 +517,13 @@ FUNCTION runGAS()
       LET cmd=cmd,
         --hooray, renamed options ... , since 3.10 "res.path.gbc.user"
         sfmt(' -E "res.path.%1.user=',IIF(m_gasversion>=3.1,"gbc","gwcjs")),
-        os.Path.dirname(m_gbcdir),'"'
+        bs2slash( os.Path.dirname(m_gbcdir) ),'"'
     END IF
     IF m_gasversion < 2.50 THEN
       LET cmd=cmd,' -E "res.path.app=',getAppDir(),'"'
     ELSE
       --renamed in 2.50...
-      LET cmd=cmd,' -E "res.appdata.path=',getAppDataDir(),'"'
+      LET cmd=cmd,' -E "res.appdata.path=',bs2slash( getAppDataDir() ),'"'
     END IF
     IF redirect_error THEN
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
@@ -815,6 +815,11 @@ FUNCTION replacechar(fname,chartoreplace,replacechar)
     LET prev=idx
   END WHILE
   RETURN buf.toString()
+END FUNCTION
+
+FUNCTION bs2slash(fname)
+  DEFINE fname STRING
+  RETURN replacechar(fname, '\\', '/')
 END FUNCTION
 
 FUNCTION file_equal(f1, f2, ignorecase)

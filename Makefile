@@ -54,6 +54,7 @@ echo:
 	@echo "FGLGBCDIR=$(FGLGBCDIR)"
 	@echo "GBCOPT=$(GBCOPT)"
 	@echo "UROPT=$(UROPT)"
+	@echo "make=$(MAKE)"
 
 clean_prog:
 	rm -f fglwebrun.42m fglwebrungdc.42m runonserver.42m
