@@ -45,7 +45,7 @@ MAIN
   END IF
   CALL createGASApp()
   IF m_GDC IS NOT NULL THEN
-    CALL openGDC()
+    CALL checkGDC()
   ELSE
     IF fgl_getenv("GMI") IS NOT NULL THEN
       CALL connectToGMI()
@@ -368,10 +368,10 @@ END FUNCTION
 FUNCTION createXCF(appfile,module,args,invokeShell)
   DEFINE appfile, module STRING
   DEFINE args DYNAMIC ARRAY OF STRING
-  DEFINE invokeShell BOOLEAN
+  DEFINE invokeShell,imagepathFound BOOLEAN
   DEFINE copyenv DYNAMIC ARRAY OF STRING
   DEFINE i,eqIdx INT
-  DEFINE line,name,basedir,wcdir,value STRING
+  DEFINE line,name,basedir,wcdir,value, fglimagepath STRING
   DEFINE doc om.DomDocument
   DEFINE root,exe,params,out,map,timeout om.DomNode
   LET doc=om.DomDocument.create("APPLICATION")
@@ -402,11 +402,19 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
         OR name.getIndexOf("FGL_VMPROXY",1)==1 THEN
         CONTINUE FOR
       END IF
+      IF name=="FGLIMAGEPATH" THEN
+        LET imagepathFound=TRUE
+      END IF
       IF (value:=fgl_getenv(name)) IS NOT NULL THEN --check if we actually have this env
         CALL createEnv(exe,name,value)
       END IF
     END IF
   END FOR
+  IF NOT imagepathFound THEN -- by default cache FontAwesome and image2font.txt
+     CALL cpTTFAssets2Common()
+     LET fglimagepath=os.Path.join(getGASCommonDir(),"image2font.txt"),os.Path.pathSeparator(),getGASCommonDir()
+     CALL createEnv(exe,"FGLIMAGEPATH",fglimagepath)
+  END IF
   --CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
   CALL createTag(exe,"PATH",os.Path.pwd())
   CALL createTag(exe,"MODULE",module)
@@ -447,6 +455,15 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CATCH
     CALL myerr(sfmt("Can't write %1:%2",appfile,err_get(status)))
   END TRY
+END FUNCTION
+
+FUNCTION getGASCommonDir()
+  DEFINE publicdir, commondir STRING
+  LET publicdir = os.Path.join(getAppDataDir(), "public")
+  CALL checkMkdir(publicdir)
+  LET commondir = os.Path.join(publicdir, "common")
+  CALL checkMkdir(commondir)
+  RETURN commondir
 END FUNCTION
 
 FUNCTION createContent(parent,content)
@@ -704,7 +721,7 @@ FUNCTION connectToGMI()
       LET fglprofile=os.Path.join(m_mydir,"fglprofile")
     END IF
     CALL fgl_setenv("FGLPROFILE",fglprofile)
-    LET cmd=sfmt("fglrun %1 %2",os.Path.join(m_mydir,"runonserver"),getGASURL())
+    LET cmd=sfmt("fglrun %1 %2",quote(os.Path.join(m_mydir,"runonserver")),getGASURL())
     DISPLAY "RUN:",cmd
     RUN cmd WITHOUT WAITING
     RETURN
@@ -719,16 +736,20 @@ FUNCTION connectToGMI()
   END TRY
 END FUNCTION
 
-FUNCTION openGDC()
+
+FUNCTION checkGDC()
   DEFINE gdc,cmd STRING
+  IF m_gdc=="1" THEN --like GMI we connect to a running GDC instance
+    LET m_gdc=getGDCPath() 
+  END IF
   LET gdc=m_gdc
   IF NOT os.Path.exists(gdc) THEN
-    CALL myerr(sfmt("Can't find '%1'",gdc))
+    CALL myerr(sfmt("Can't find GDC executable at '%1'",gdc))
   END IF
   IF NOT os.Path.executable(gdc) THEN
     DISPLAY "Warning:os.Path not executable:",gdc
   END IF
-  LET cmd=sfmt("'%1' -u %2",gdc,getGASURL())
+  LET cmd=sfmt("%1 -u %2",quote(gdc),getGASURL())
   CALL log(sfmt("GDC cmd:%1",cmd))
   RUN cmd WITHOUT WAITING
 END FUNCTION
@@ -758,6 +779,19 @@ FUNCTION checkWebComponentInstall()
   END IF
 END FUNCTION
 
+FUNCTION checkMkdir(dir)
+  DEFINE dir STRING
+  IF NOT os.Path.exists(dir) THEN
+    IF NOT os.Path.mkdir(dir) THEN
+      CALL myerr(sfmt("checkMkdir: Can't create '%1'",dir))
+    END IF
+  ELSE
+    IF NOT os.Path.isDirectory(dir) OR os.Path.isLink(dir) THEN
+      CALL myerr(sfmt("checkMkdir: no dirrectory or link '%1'",dir))
+    END IF
+  END IF
+END FUNCTION
+
 FUNCTION copyWCAssets(sub,component) 
   DEFINE sub,component STRING
   DEFINE name,componentsdir,componentdir,src,dest,webdir STRING
@@ -765,30 +799,16 @@ FUNCTION copyWCAssets(sub,component)
   #I did not figure out yet where the webcomponent can be made private to gas<3.0
   #so we pollute the GAS/web directory for now
   LET webdir=os.Path.join(m_gasdir,"web")
-  IF NOT os.Path.exists(webdir) THEN
-    IF NOT os.Path.mkdir(webdir) THEN
-      CALL myerr(sfmt("Can't create '%1'",webdir))
-    END IF
-  ELSE 
-    IF NOT os.Path.isDirectory(webdir) THEN
-      CALL myerr(sfmt("'%1' is not a directory",webdir))
-    END IF
-  END IF
+  CALL checkMkdir(webdir)
   LET componentsdir=os.Path.join(webdir,"components")
-  IF NOT os.Path.exists(componentsdir) THEN
-    IF NOT os.Path.mkdir(componentsdir) THEN
-      CALL myerr(sfmt("Can't create web/components dir:%1",componentsdir))
-    END IF
-  END IF
+  CALL checkMkdir(componentsdir)
   LET componentdir=os.Path.join(componentsdir,component)
   IF fgl_getenv("WINDIR") IS NULL THEN 
     RUN sfmt("rm -rf %1",componentdir) RETURNING dummy
   ELSE
     RUN sfmt("rmdir %1 /s /q",componentdir) RETURNING dummy
   END IF
-  IF NOT os.Path.mkdir(componentdir) THEN
-    CALL myerr(sfmt("Can't create webcomponent dir:%1",componentdir))
-  END IF
+  CALL checkMkdir(componentdir)
   LET dirhandle=os.Path.dirOpen(sub)
   WHILE (name:=os.Path.dirNext(dirhandle)) IS NOT NULL
     IF name=="." OR name==".." THEN
@@ -802,6 +822,27 @@ FUNCTION copyWCAssets(sub,component)
     END IF
   END WHILE
   CALL os.Path.dirClose(dirhandle)
+END FUNCTION
+
+PRIVATE FUNCTION cpChecked(srcdir,destdir,fname)
+  DEFINE srcdir,destdir,fname,src,dest STRING
+  LET src=os.Path.join(srcdir,fname)
+  LET dest=os.Path.join(destdir,fname)
+  IF file_equal(src,dest,FALSE) THEN
+    DISPLAY sfmt("cpChecked: '%1' already copied",src)
+    RETURN
+  END IF
+  IF NOT os.Path.copy(src,dest) THEN
+    CALL myErr(sfmt("cpChecked: can't copy '%1' to '%2'",src,dest))
+  END IF
+END FUNCTION
+
+FUNCTION cpTTFAssets2Common()
+  DEFINE fgldirlib,commondir STRING
+  LET fgldirlib=os.Path.join(m_fgldir,"lib")
+  LET commondir=getGASCommonDir()
+  CALL cpChecked(fgldirlib,commondir,"FontAwesome.ttf")
+  CALL cpChecked(fgldirlib,commondir,"image2font.txt")
 END FUNCTION
 
 FUNCTION replacechar(fname,chartoreplace,replacechar)
@@ -842,4 +883,76 @@ FUNCTION file_equal(f1, f2, ignorecase)
   END IF
   RUN cmd RETURNING code
   RETURN (code == 0)
+END FUNCTION
+
+FUNCTION getGDCPath()
+  DEFINE cmd,fglserver,fglprofile,executable STRING
+  LET fglserver=fgl_getenv("GDCFGLSERVER")
+  IF fglserver IS NULL THEN
+    LET fglserver=fgl_getenv("FGLSERVER")
+   END IF
+  IF fglserver IS NULL THEN
+    LET fglserver="localhost"
+  END IF
+  CALL fgl_setenv("FGLSERVER",fglserver)
+  LET fglprofile=fgl_getenv("FGLPROFILE")
+  IF NOT os.Path.exists(fglprofile) THEN
+    LET fglprofile=os.Path.join(m_mydir,"fglprofile")
+  END IF
+  CALL fgl_setenv("FGLPROFILE",fglprofile)
+  LET cmd=sfmt("fglrun %1",quote(os.Path.join(m_mydir,"getgdcpath")))
+  LET executable=getProgramOutput(cmd)
+  RETURN executable
+END FUNCTION
+
+FUNCTION getProgramOutput(cmd)
+  DEFINE cmd,cmdOrig,tmpName,errStr STRING
+  DEFINE txt TEXT
+  DEFINE ret STRING
+  DEFINE code INT
+  DISPLAY "RUN cmd:",cmd
+  LET cmdOrig=cmd
+  LET tmpName=makeTempName()
+  LET cmd=cmd,">",tmpName," 2>&1"
+  --DISPLAY "run:",cmd
+  RUN cmd RETURNING code
+  LOCATE txt IN FILE tmpName
+  LET ret=txt
+  CALL os.Path.delete(tmpName) RETURNING status
+  IF code THEN
+    LET errStr=",\n  output:",ret
+    CALL os.Path.delete(tmpName) RETURNING code
+    CALL myerr(sfmt("failed to RUN:%1%2",cmdOrig,errStr))
+  ELSE
+    --remove \r\n
+    IF ret.getCharAt(ret.getLength())=="\n" THEN
+      LET ret=ret.subString(1,ret.getLength()-1)
+    END IF
+    IF ret.getCharAt(ret.getLength())=="\r" THEN
+      LET ret=ret.subString(1,ret.getLength()-1)
+    END IF
+  END IF
+  RETURN ret
+END FUNCTION
+
+#+computes a temporary file name
+FUNCTION makeTempName()
+  DEFINE tmpDir,tmpName,curr STRING
+  DEFINE sb base.StringBuffer
+  IF isWin() THEN
+    LET tmpDir=fgl_getenv("TEMP")
+  ELSE
+    LET tmpDir="/tmp"
+  END IF
+  LET curr=CURRENT
+  LET sb=base.StringBuffer.create()
+  CALL sb.append(curr)
+  CALL sb.replace(" ","_",0)
+  CALL sb.replace(":","_",0)
+  CALL sb.replace(".","_",0)
+  CALL sb.replace("-","_",0)
+  CALL sb.append(".tmp")
+  LET curr=sb.toString()
+  LET tmpName=os.Path.join(tmpDir,sfmt("fgl_%1_%2",fgl_getpid(),curr))
+  RETURN tmpName
 END FUNCTION

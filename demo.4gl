@@ -12,6 +12,8 @@ MAIN
     --  MESSAGE "IDLE"
     COMMAND "Webcomponent"
       CALL webco()
+    ON ACTION env ATTRIBUTES(IMAGE="smiley", TEXT= "Show Env")
+      RUN "env"
     COMMAND "Exit"
       EXIT MENU
   END MENU

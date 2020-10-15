@@ -34,7 +34,7 @@ endif
 GBCOPT=$(call _env,FGLGBCDIR,$(FGLGBCDIR))
 UROPT=$(call _env,FGLPROFILE,universal)
 
-all: fglwebrun.42m fglwebrungdc.42m runonserver.42m
+all: fglwebrun.42m fglwebrungdc.42m runonserver.42m getgdcpath.42m
 
 demo: fglwebrun demo.42f demo.42m
 #	FILTER=ALL $(FGLWEBRUN) demo a b
@@ -43,10 +43,17 @@ demo: fglwebrun demo.42f demo.42m
 gmiurdemo: fglwebrun demo.42f demo.42m
 	$(call _env,GMI,1)$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 
+gdcdemo: fglwebrun demo.42f demo.42m
+#note you must specify GDC
+ifndef WINDIR
+	if [ -z $(GDC) ]; then echo "GDC not set"; exit 1; fi
+endif
+	$(call _env,GDC,$(GDC))$(FGLWEBRUN) demo a b
+
 gdcurdemo: fglwebrun demo.42f demo.42m
 #note you must specify GDC
 ifndef WINDIR
-	if [ -z $(GDC) ]; then echo "GDC executable not set"; exit 1; fi
+	if [ -z $(GDC) ]; then echo "GDC not set"; exit 1; fi
 endif
 	$(call _env,GDC,$(GDC))$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 

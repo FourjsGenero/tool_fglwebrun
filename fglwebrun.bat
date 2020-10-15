@@ -8,6 +8,7 @@ pushd %CD%
 %THISDRIVE%
 cd %FGLWEBRUNDIR%
 fglcomp -M fglwebrun.4gl
+fglcomp -M getgdcpath.4gl
 IF %errorlevel% NEQ 0 GOTO myend
 popd
 %MYDRIVE%

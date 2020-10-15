@@ -76,6 +76,17 @@ Example enabling all log output of GAS
 $ FILTER=ALL fglwebrun prog
 ```
 
+GDC - runs the program with GDC 
+Example running the progam with GDC
+```
+$ GDC=1 fglwebrun prog
+```
+Connects to a running GDC instance by inspecting FGLSERVER
+```
+$ GDC=/Users/leo/Applications/gdc fglwebrun prog
+```
+If the GDC env is a valid path name to GDC , GDC is started and runs the program
+
 # Known problems
 
 If httpdispatch was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.
