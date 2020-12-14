@@ -38,7 +38,7 @@ all: fglwebrun.42m fglwebrungdc.42m runonserver.42m getgdcpath.42m
 
 demo: fglwebrun demo.42f demo.42m
 #	FILTER=ALL $(FGLWEBRUN) demo a b
-	$(FGLWEBRUN) demo a b
+	fglcomp -M demo&&$(FGLWEBRUN) demo a b
 
 gmiurdemo: fglwebrun demo.42f demo.42m
 	$(call _env,GMI,1)$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
