@@ -64,7 +64,7 @@ FUNCTION setupVariables()
   IF m_gashost IS NULL THEN
     LET m_gashost="localhost"
   END IF
-  LET m_mydir=os.Path.fullPath(os.Path.dirname(arg_val(0)))
+  LET m_mydir=os.Path.fullPath(os.Path.dirName(arg_val(0)))
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
     CALL myerr("FGLASDIR not set")
@@ -89,17 +89,17 @@ FUNCTION fullPath(dir_or_file)
   END IF
   IF NOT os.Path.isDirectory(dir_or_file) THEN
     --file case
-    LET baseName=os.Path.basename(dir_or_file)
+    LET baseName=os.Path.baseName(dir_or_file)
     LET dir_or_file=os.Path.dirName(dir_or_file)
   END IF
-  IF os.Path.chdir(dir_or_file) THEN
+  IF os.Path.chDir(dir_or_file) THEN
     LET full=os.Path.pwd()
     IF baseName IS NOT NULL THEN 
       --file case
       LET full=os.Path.join(full,baseName)
     END IF
   END IF
-  CALL os.Path.chdir(oldpath) RETURNING dummy
+  CALL os.Path.chDir(oldpath) RETURNING dummy
   RETURN full
 END FUNCTION
 
@@ -140,7 +140,7 @@ FUNCTION checkGBCDir()
   IF NOT os.Path.exists(indexhtml) THEN
     CALL myerr(sfmt("No index.html found in %1",m_gbcdir))
   END IF
-  LET dir_of_gbc_dir=os.Path.dirname(m_gbcdir)
+  LET dir_of_gbc_dir=os.Path.dirName(m_gbcdir)
   LET chan=base.Channel.create()
   LET _default=os.Path.join(dir_of_gbc_dir,"_default")
   IF os.Path.exists(_default) THEN
@@ -206,16 +206,16 @@ FUNCTION file_get_output(program,arr)
   DEFINE arr DYNAMIC ARRAY OF STRING
   DEFINE mystatus,idx INTEGER
   DEFINE c base.Channel
-  LET c = base.channel.create()
+  LET c = base.Channel.create()
   WHENEVER ERROR CONTINUE
-  CALL c.openpipe(program,"r")
+  CALL c.openPipe(program,"r")
   LET mystatus=status
   WHENEVER ERROR STOP
   IF mystatus THEN
     CALL myerr(sfmt("program:%1, error:%2",program,err_get(mystatus)))
   END IF
   CALL arr.clear()
-  WHILE (linestr:=c.readline()) IS NOT NULL
+  WHILE (linestr:=c.readLine()) IS NOT NULL
     LET idx=idx+1
     LET arr[idx]=linestr
   END WHILE
@@ -254,7 +254,7 @@ FUNCTION getGASVersion()
   DEFINE idx,i INT
  
   LET httpdispatch=getGASExe()
-  LET ch = base.channel.create()
+  LET ch = base.Channel.create()
   LET cmd=quote(httpdispatch)," -V"
   --DISPLAY "gasversion cmd:",cmd
   CALL file_get_output(cmd,arr)
@@ -423,7 +423,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     CALL createTag(params,"PARAMETER",args[i])
   END FOR
   IF module.getCharAt(1)=="/" THEN --we were invoked via absolute path
-    LET basedir=os.Path.dirname(module)
+    LET basedir=os.Path.dirName(module)
     LET wcdir=os.Path.join(basedir,"webcomponents")
     IF os.Path.exists(wcdir) THEN
       CALL log(sfmt("add <WEB_COMPONENT_DIRECTORY>:%1",wcdir))
@@ -434,7 +434,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
       LET out=root.createChild("OUTPUT")
       LET map=out.createChild("MAP")
-      CALL map.setAttribute("Id",sfmt("DUA_%1",IIF(m_gdc IS NOT NULL,"GDC","GWC")))
+      CALL map.setAttribute("Id",sfmt("DUA_%1",IIF(m_GDC IS NOT NULL,"GDC","GWC")))
       CALL map.setAttribute("Allowed","TRUE")
     WHEN m_gbcdir IS NOT NULL
       LET out=root.createChild("UA_OUTPUT")
@@ -522,7 +522,7 @@ FUNCTION runGAS()
     IF (filter:=fgl_getenv("FILTER")) IS NULL THEN
       --default filter value
       --other possible values "ERROR" "ALL"
-      LET filter="PROCESS"
+      LET filter="ERROR"
     END IF
     LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
     --comment the following line if you want  to disable AUI tree watching
@@ -534,7 +534,7 @@ FUNCTION runGAS()
       LET cmd=cmd,
         --hooray, renamed options ... , since 3.10 "res.path.gbc.user"
         sfmt(' -E "res.path.%1.user=',IIF(m_gasversion>=3.1,"gbc","gwcjs")),
-        bs2slash( os.Path.dirname(m_gbcdir) ),'"'
+        bs2slash( os.Path.dirName(m_gbcdir) ),'"'
     END IF
     IF m_gasversion < 2.50 THEN
       LET cmd=cmd,' -E "res.path.app=',getAppDir(),'"'
@@ -739,10 +739,10 @@ END FUNCTION
 
 FUNCTION checkGDC()
   DEFINE gdc,cmd STRING
-  IF m_gdc=="1" THEN --like GMI we connect to a running GDC instance
-    LET m_gdc=getGDCPath() 
+  IF m_GDC=="1" THEN --like GMI we connect to a running GDC instance
+    LET m_GDC=getGDCPath()
   END IF
-  LET gdc=m_gdc
+  LET gdc=m_GDC
   IF NOT os.Path.exists(gdc) THEN
     CALL myerr(sfmt("Can't find GDC executable at '%1'",gdc))
   END IF
@@ -833,7 +833,7 @@ PRIVATE FUNCTION cpChecked(srcdir,destdir,fname)
     RETURN
   END IF
   IF NOT os.Path.copy(src,dest) THEN
-    CALL myErr(sfmt("cpChecked: can't copy '%1' to '%2'",src,dest))
+    CALL myerr(sfmt("cpChecked: can't copy '%1' to '%2'",src,dest))
   END IF
 END FUNCTION
 
@@ -886,7 +886,7 @@ FUNCTION file_equal(f1, f2, ignorecase)
 END FUNCTION
 
 FUNCTION getGDCPath()
-  DEFINE cmd,fglserver,fglprofile,executable STRING
+  DEFINE cmd,fglserver,fglprofile,executable,native,dbg_unset,redir STRING
   LET fglserver=fgl_getenv("GDCFGLSERVER")
   IF fglserver IS NULL THEN
     LET fglserver=fgl_getenv("FGLSERVER")
@@ -896,16 +896,22 @@ FUNCTION getGDCPath()
   END IF
   CALL fgl_setenv("FGLSERVER",fglserver)
   LET fglprofile=fgl_getenv("FGLPROFILE")
-  IF NOT os.Path.exists(fglprofile) THEN
-    LET fglprofile=os.Path.join(m_mydir,"fglprofile")
+  IF fglprofile IS NOT NULL THEN
+    LET native=os.Path.join(m_mydir,"fglprofile")
+    CALL fgl_setenv("FGLPROFILE",native)
   END IF
-  CALL fgl_setenv("FGLPROFILE",fglprofile)
-  LET cmd=sfmt("fglrun %1",quote(os.Path.join(m_mydir,"getgdcpath")))
+  LET dbg_unset=IIF(isWin(),"set FGLGUIDEBUG=","unset FGLGUIDEBUG")
+  LET redir=IIF(isWin(),"2>nul","2>/dev/null")
+  LET cmd=sfmt("%1&&fglrun %2 %3",dbg_unset,quote(os.Path.join(m_mydir,"getgdcpath")),redir)
   LET executable=getProgramOutput(cmd)
+  IF fglprofile IS NOT NULL THEN
+    CALL fgl_setenv("FGLPROFILE",fglprofile)
+  END IF
+  DISPLAY "gdc path:",executable
   RETURN executable
 END FUNCTION
 
-FUNCTION getProgramOutput(cmd)
+FUNCTION getProgramOutput(cmd) RETURNS STRING
   DEFINE cmd,cmdOrig,tmpName,errStr STRING
   DEFINE txt TEXT
   DEFINE ret STRING

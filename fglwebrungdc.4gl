@@ -31,6 +31,6 @@ FUNCTION openURL(url)
         LET cmd=sfmt("xdg-open %1",url)
   END CASE
   DISPLAY "cmd:",cmd
-  CALL ui.Interface.frontcall("standard","execute",[cmd,1],[ret])
+  CALL ui.Interface.frontCall("standard","execute",[cmd,1],[ret])
   DISPLAY "ret:",ret
 END FUNCTION

@@ -7,6 +7,6 @@ MAIN
     DISPLAY "wrong client:",ui.Interface.getFrontEndName()
     EXIT PROGRAM 1
   END IF
-  CALL  ui.interface.frontcall("qa","getInformation",["applicationFilePath"],[executable])
+  CALL  ui.Interface.frontCall("qa","getInformation",["applicationFilePath"],[executable])
   DISPLAY executable
 END MAIN
