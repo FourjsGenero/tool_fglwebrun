@@ -64,7 +64,7 @@ echo:
 	@echo "make=$(MAKE)"
 
 clean_prog:
-	rm -f fglwebrun.42m fglwebrungdc.42m runonserver.42m
+	rm -f fglwebrun.42m fglwebrungdc.42m runonserver.42m getgdcpath.42m
 
 clean: clean_prog
 	rm -f *.42?
