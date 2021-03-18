@@ -247,7 +247,7 @@ FUNCTION quote(path)
 END FUNCTION
 
 FUNCTION getGASVersion()
-  DEFINE ch base.channel
+  DEFINE ch base.Channel
   DEFINE cmd,line,httpdispatch,vstring STRING
   DEFINE arr DYNAMIC ARRAY OF STRING
   DEFINE gasversion FLOAT
@@ -422,7 +422,8 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   FOR i=1 TO args.getLength()
     CALL createTag(params,"PARAMETER",args[i])
   END FOR
-  IF module.getCharAt(1)=="/" THEN --we were invoked via absolute path
+  IF m_gasversion<3.2 AND  --GAS>=3.2 handles WEB_COMPONENT_DIRECTORY built in 
+    module.getCharAt(1)=="/" THEN --we were invoked via absolute path
     LET basedir=os.Path.dirName(module)
     LET wcdir=os.Path.join(basedir,"webcomponents")
     IF os.Path.exists(wcdir) THEN
@@ -608,7 +609,7 @@ FUNCTION read_response(c)
       CALL log(sfmt("GAS answer:%1",s))
       LET s = s.toLowerCase()
       IF (s MATCHES "server: gas/2*")
-         OR (s MATCHES "x-fourjs-server: gas/3*") THEN
+         OR (s MATCHES "x-fourjs-server: gas*") THEN
         RETURN TRUE
       END IF
       IF s.getLength() == 0 THEN
