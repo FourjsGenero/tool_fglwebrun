@@ -164,7 +164,7 @@ FUNCTION checkGBCDir()
 END FUNCTION
 
 FUNCTION isWin()
-  RETURN fgl_getenv("WINDIR") IS NOT NULL OR fgl_getenv("windir") IS NOT NULL
+  RETURN os.Path.separator() == "\\"
 END FUNCTION
 
 FUNCTION mklink(src,dest,err)
@@ -804,7 +804,7 @@ FUNCTION copyWCAssets(sub,component)
   LET componentsdir=os.Path.join(webdir,"components")
   CALL checkMkdir(componentsdir)
   LET componentdir=os.Path.join(componentsdir,component)
-  IF fgl_getenv("WINDIR") IS NULL THEN 
+  IF NOT isWin() THEN 
     RUN sfmt("rm -rf %1",componentdir) RETURNING dummy
   ELSE
     RUN sfmt("rmdir %1 /s /q",componentdir) RETURNING dummy
@@ -830,7 +830,7 @@ PRIVATE FUNCTION cpChecked(srcdir,destdir,fname)
   LET src=os.Path.join(srcdir,fname)
   LET dest=os.Path.join(destdir,fname)
   IF file_equal(src,dest,FALSE) THEN
-    DISPLAY sfmt("cpChecked: '%1' already copied",src)
+    --DISPLAY sfmt("cpChecked: '%1' already copied",src)
     RETURN
   END IF
   IF NOT os.Path.copy(src,dest) THEN
@@ -868,19 +868,19 @@ END FUNCTION
 FUNCTION file_equal(f1, f2, ignorecase)
   DEFINE f1, f2 STRING
   DEFINE ignorecase BOOLEAN
-  DEFINE cmd,opt STRING
+  DEFINE cmd, opt STRING
   DEFINE code INTEGER
   LET opt = " "
-  IF fgl_getenv("WINDIR") THEN
+  IF isWin() THEN
     IF ignorecase THEN
       LET opt = "/c"
     END IF
-    LET cmd = "fc " || opt || " " || f1 || " " || f2
+    LET cmd = "fc ", opt, " ", quote(f1), " ", quote(f2)
   ELSE
     IF ignorecase THEN
       LET opt = "-i"
     END IF
-    LET cmd = "diff " || opt || " " || f1 || " " || f2
+    LET cmd = "diff ", opt, " ", quote(f1), " ", quote(f2)
   END IF
   RUN cmd RETURNING code
   RETURN (code == 0)
