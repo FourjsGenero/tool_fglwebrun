@@ -912,7 +912,7 @@ FUNCTION getGDCPath()
   RETURN executable
 END FUNCTION
 
-FUNCTION getProgramOutput(cmd) RETURNS STRING
+FUNCTION getProgramOutput(cmd)
   DEFINE cmd,cmdOrig,tmpName,errStr STRING
   DEFINE txt TEXT
   DEFINE ret STRING
