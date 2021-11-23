@@ -56,6 +56,8 @@ MAIN
 END MAIN
 
 FUNCTION setupVariables()
+  DEFINE port INT
+  DEFINE portstr STRING
   LET m_gasdir=fgl_getenv("FGLASDIR")
   LET m_fgldir=fgl_getenv("FGLDIR")
   LET m_GDC=fgl_getenv("GDC")
@@ -63,6 +65,16 @@ FUNCTION setupVariables()
   LET m_gashost=fgl_getenv("GASHOST")
   IF m_gashost IS NULL THEN
     LET m_gashost="localhost"
+  END IF
+  LET portstr = fgl_getenv("GASPORT")
+  IF portstr.equals("default") THEN
+    LET port = 6394
+  ELSE
+    LET port = portstr
+  END IF
+  IF port IS NOT NULL THEN
+    CALL log(SFMT("custom port:%1", port))
+    LET m_port = port
   END IF
   LET m_mydir=os.Path.fullPath(os.Path.dirName(arg_val(0)))
   LET m_isMac=NULL
@@ -277,7 +289,7 @@ FUNCTION getGASVersion()
   END FOR
   IF vstring IS NOT NULL THEN
     LET gasversion=parseVersion(vstring)
-    DISPLAY "gasversion=",gasversion
+    CALL log(SFMT("gasversion=%1", gasversion))
   END IF
   CALL ch.close()
   RETURN gasversion
@@ -309,12 +321,27 @@ FUNCTION getAppDir()
 END FUNCTION
 
 FUNCTION getAppDataDir()
-  DEFINE xcfdir STRING
+  DEFINE xcfdir, eappdata STRING
   IF m_appdata_dir IS NULL THEN 
-    LET m_appdata_dir=os.Path.join(os.Path.homeDir(),IIF(isWin(),"gas_appdata",".gas_appdata"))
-    DISPLAY "m_appdata_dir:",m_appdata_dir
+    LET eappdata = fgl_getenv("APPDATA")
+    IF eappdata IS NOT NULL THEN
+      IF eappdata.equals("default") THEN
+        LET eappdata = os.Path.join(m_gasdir, "appdata")
+      END IF
+      IF NOT os.Path.exists(eappdata) OR NOT os.Path.isDirectory(eappdata) THEN
+        CALL myerr(
+            SFMT("APPDATA dir:%1 does not exist or is not a directory",
+                eappdata))
+      END IF
+      LET m_appdata_dir = eappdata
+    ELSE
+      LET m_appdata_dir =
+          os.Path.join(
+              os.Path.homeDir(), IIF(isWin(), "gas_appdata", ".gas_appdata"))
+    END IF
+    CALL log(SFMT("m_appdata_dir:%1", m_appdata_dir))
     LET xcfdir=os.Path.join(m_appdata_dir,"app")
-    DISPLAY "xcfdir:",xcfdir
+    CALL log(SFMT("xcfdir:%1", xcfdir))
     IF NOT os.Path.exists(m_appdata_dir) THEN
       IF NOT os.Path.mkdir(m_appdata_dir) THEN
         CALL myerr(sfmt("Can't create appdata '%1'",m_appdata_dir))
