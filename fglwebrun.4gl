@@ -5,6 +5,7 @@ DEFINE m_gasdir STRING
 DEFINE m_gasversion FLOAT
 DEFINE m_fgldir STRING
 DEFINE m_port INT
+DEFINE m_specific_port BOOLEAN
 DEFINE m_isMac BOOLEAN
 DEFINE m_gbcdir,m_gbcname STRING
 DEFINE m_appname STRING
@@ -62,9 +63,13 @@ FUNCTION setupVariables()
   LET m_fgldir=fgl_getenv("FGLDIR")
   LET m_GDC=fgl_getenv("GDC")
   LET m_html5=fgl_getenv("HTML5")
-  LET m_gashost=fgl_getenv("GASHOST")
+  LET m_gashost = fgl_getenv("FGLCOMPUTER")
   IF m_gashost IS NULL THEN
-    LET m_gashost="localhost"
+    IF NOT isWin() THEN
+      LET m_gashost = getProgramOutput("hostname")
+    ELSE
+      LET m_gashost = "localhost"
+    END IF
   END IF
   LET portstr = fgl_getenv("GASPORT")
   IF portstr.equals("default") THEN
@@ -74,6 +79,7 @@ FUNCTION setupVariables()
   END IF
   IF port IS NOT NULL THEN
     CALL log(SFMT("custom port:%1", port))
+    LET m_specific_port = TRUE
     LET m_port = port
   END IF
   LET m_mydir=os.Path.fullPath(os.Path.dirName(arg_val(0)))
@@ -587,9 +593,12 @@ FUNCTION runGAS()
       END IF
       SLEEP 1
     END FOR
+    IF m_specific_port THEN
+      EXIT FOR --avoid trying to allocate multiple ports
+    END IF
     LET m_port=m_port+1
   END FOR
-  CALL myerr("Can't startup GAS, check your configuration, FGLASDIR")
+  CALL myerr("Can't startup GAS, check your configuration, FGLASDIR, GASPORT")
 END FUNCTION
 
 FUNCTION writeGASBat(bat,cmd)
@@ -677,9 +686,8 @@ END FUNCTION
 
 FUNCTION openBrowser()
   DEFINE url,cmd,browser,lbrowser,pre STRING
-  DEFINE fglhost,host,fglwebrungdc,defgbc STRING
-  LET fglhost=fgl_getenv("FGLCOMPUTER")
-  LET host=IIF(fglhost IS NULL,"localhost",fglhost)
+  DEFINE host, fglwebrungdc, defgbc STRING
+  LET host = m_gashost
   CASE
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
       LET url=sfmt("http://%1:%2/wa/r/_%3?t=%4",host,m_port,m_appname,getTime())
@@ -735,7 +743,7 @@ END FUNCTION
 
 FUNCTION connectToGMI()
   DEFINE cmd,result,fglserver,fglprofile STRING
-  IF m_gashost IS NOT NULL THEN
+  IF TRUE THEN
     LET fglserver=fgl_getenv("GMIFGLSERVER")
     IF fglserver IS NULL THEN
       LET fglserver=fgl_getenv("FGLSERVER")
@@ -750,7 +758,7 @@ FUNCTION connectToGMI()
     END IF
     CALL fgl_setenv("FGLPROFILE",fglprofile)
     LET cmd=sfmt("fglrun %1 %2",quote(os.Path.join(m_mydir,"runonserver")),getGASURL())
-    DISPLAY "RUN:",cmd
+    CALL log(SFMT("RUN:%1", cmd))
     RUN cmd WITHOUT WAITING
     RETURN
   END IF
@@ -944,7 +952,7 @@ FUNCTION getProgramOutput(cmd)
   DEFINE txt TEXT
   DEFINE ret STRING
   DEFINE code INT
-  DISPLAY "RUN cmd:",cmd
+  CALL log(SFMT("RUN cmd:%1", cmd))
   LET cmdOrig=cmd
   LET tmpName=makeTempName()
   LET cmd=cmd,">",tmpName," 2>&1"

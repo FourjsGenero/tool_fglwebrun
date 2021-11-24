@@ -26,6 +26,7 @@ FUNCTION webco()
   DISPLAY entry TO entry
   LET w="def"
   DISPLAY w TO w
+  DISPLAY "logo.png" TO img
   MENU "Test Webco"
     COMMAND "Input"
       LET int_flag=FALSE
