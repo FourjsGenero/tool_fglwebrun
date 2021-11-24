@@ -58,7 +58,7 @@ Example on Mac running the app with Google Chrome:
 ```
 $ BROWSER="chrome" fglwebrun prog
 ```
-Example if logged in remote and `FGLSERVER` is pointing to a GDC on your desk
+Example if logged in remote and `FGLSERVER` is pointing to a GDC on your desk, `fglwebrun` calls in this case `fglwebrungdc` which in turn uses the `"standard","execute"` frontcall to invoke the browser on the dektop with the URL pointing  to the remote GAS.
 ```
 $ BROWSER="gdc" fglwebrun prog
 ```
@@ -69,10 +69,17 @@ Example with a specific GBC directory:
 ```
 $ FGLGBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
 ```
+## `GASPORT`- sets a custom port the GAS is listening on
+By default `fglwebrun` starts at the port 6365 to look for a GAS.
+If a connect on that port is possible and GAS answers: port taken.
+If no connect is possible , GAS is invoked with this port.
+If a port is already bound and no GAS is listening on that port, `fglwebrun` increases the port number and checks the next port and so forth.
+If the `GASPORT` is set, only that port is probed and `fglwebrun` terminates if GAS does not/cannot run on that port.
+
 ## `FGLCOMPUTER`- override the default browser hostname
 On Unix (Linux/Mac) `fglwebrun` uses the `hostname` command to deduce the host GAS is running on.
 Windows : `localhost` for now.
-In case you want to make a port forwarding in the remote login case you might want to set it to `localhost`
+If you want to make a port forwarding in the remote login case you might want to set it to `localhost`
 ```
 $ ssh -L 6395:localhost:6395
 $ GASPORT=6395 FGLCOMPUTER=localhost BROWSER=gdc fglwebrun demo
@@ -94,6 +101,10 @@ Example enabling all log output of GAS
 ```
 $ FILTER=ALL fglwebrun prog
 ```
+## `VERBOSE`- produces lots of output
+```
+$ VERBOSE=1 fglwebrun prog
+```
 ## `GDC`- runs the program with GDC
 Is more internal for GDC developers.
 It's an easy way to run/debug the GDC with a Genero program via http and GAS.
@@ -105,12 +116,12 @@ Connects to a running GDC instance by inspecting FGLSERVER
 ```
 $ GDC=/Users/leo/Applications/gdc fglwebrun prog
 ```
-If the GDC env is a valid path name to GDC , GDC is started and runs the program
+If the GDC environment variable contains a valid path name to GDC , GDC is started and runs the program
 
 # Known problems
 
-If httpdispatch was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.
-Unfortunately there is no httpdispatch configuration equivalent to a GDC started with -X option (terminate after the last fglrun closed the connection...)
-The only solution is to kill httpdispatch manually.
-The other solution is to just change the terminal once GAS is up and running, another invocation of fglwebrun will take the same GAS.
+If `httpdispatch` was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.
+Unfortunately there is no httpdispatch configuration equivalent to a GDC started with `-X` option (terminate after the last fglrun closed the connection...)
+The only solution is to kill `httpdispatch` manually.
+The other solution is to just change the terminal once GAS is up and running, another invocation of `fglwebrun` will take the same GAS.
 
