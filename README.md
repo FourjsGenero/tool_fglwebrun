@@ -47,13 +47,38 @@ Of course you can add also <path_to_this_repository> in your PATH .
 
 # Environment Variables
 
-BROWSER - Set this to override the default browser
+## `BROWSER`- override the default browser
+Possible values
+* `chrome` - launches Chrome
+* `firefox` - launches Firefox
+* `none` - use this when logged in via `ssh` to only start the GAS, create the `.xcf` and print the URL (the URL can be pasted into your local browser)
+* `gdc` - use this when logged in via `ssh` and `FGLSERVER` is pointing to your desktop GDC (can be a port forwarded `FGLSERVER`)
 
 Example on Mac running the app with Google Chrome:
 ```
-$ BROWSER="Google Chrome" fglwebrun prog
+$ BROWSER="chrome" fglwebrun prog
 ```
-HTML5 - Enable the GWC HTML5 theme
+Example if logged in remote and `FGLSERVER` is pointing to a GDC on your desk
+```
+$ BROWSER="gdc" fglwebrun prog
+```
+
+## `FGLGBCDIR`- sets a custom GBC directory with your customization
+
+Example with a specific GBC directory:
+```
+$ FGLGBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
+```
+## `FGLCOMPUTER`- override the default browser hostname
+On Unix (Linux/Mac) `fglwebrun` uses the `hostname` command to deduce the host GAS is running on.
+Windows : `localhost` for now.
+In case you want to make a port forwarding in the remote login case you might want to set it to `localhost`
+```
+$ ssh -L 6395:localhost:6395
+$ GASPORT=6395 FGLCOMPUTER=localhost BROWSER=gdc fglwebrun demo
+```
+
+## `HTML5`- enable the GWC HTML5 theme
 
 On GAS versions < 3.0 this is the default
 For GAS >= 3.0 you need to set this to 1 if you want the older web client
@@ -61,22 +86,17 @@ For GAS >= 3.0 you need to set this to 1 if you want the older web client
 $ HTML5=1 fglwebrun prog
 ```
 
-FGLGBCDIR - Sets a custom GBC directory with your customization
-
-Example with a specific GBC directory:
-```
-$ FGLGBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
-```
-
-FILTER - Set this to override the GAS categories_filter option,
-default is "PROCESS", other possible values are `"ALL" and "ERROR"
+## `FILTER`- override the GAS categories_filter option
+This is for finding GAS problems
+default is `PROCESS`, other possible values are `ALL` and `ERROR` and `DEBUG`, see the GAS manual for all values.
 
 Example enabling all log output of GAS
 ```
 $ FILTER=ALL fglwebrun prog
 ```
-
-GDC - runs the program with GDC 
+## `GDC`- runs the program with GDC
+Is more internal for GDC developers.
+It's an easy way to run/debug the GDC with a Genero program via http and GAS.
 Example running the progam with GDC
 ```
 $ GDC=1 fglwebrun prog
