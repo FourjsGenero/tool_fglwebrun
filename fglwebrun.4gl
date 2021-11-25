@@ -89,7 +89,7 @@ FUNCTION setupVariables()
   ELSE
     LET m_gasdir=replacechar(m_gasdir,'"','')
     IF NOT os.Path.exists(m_gasdir) THEN
-      CALL myerr("FGLASDIR '%1' does not exist")
+      CALL myerr(SFMT("FGLASDIR '%1' does not exist", m_gasdir))
     END IF
     LET m_gasdir=os.Path.fullPath(m_gasdir)
   END IF
