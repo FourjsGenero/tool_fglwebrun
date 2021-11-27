@@ -684,7 +684,8 @@ FUNCTION getTime()
   RETURN data.toString()
 END FUNCTION
 
-FUNCTION replace(src STRING, oldStr STRING, newString STRING)
+FUNCTION replace(src, oldStr, newString)
+  DEFINE src, oldStr, newString STRING
   DEFINE b base.StringBuffer
   LET b = base.StringBuffer.create()
   CALL b.append(src)
@@ -692,7 +693,8 @@ FUNCTION replace(src STRING, oldStr STRING, newString STRING)
   RETURN b.toString()
 END FUNCTION
 
-FUNCTION winQuoteUrl(url STRING) RETURNS STRING
+FUNCTION winQuoteUrl(url)
+  DEFINE url STRING
   LET url = replace(url, "%", "^%")
   LET url = replace(url, "&", "^&")
   RETURN url
