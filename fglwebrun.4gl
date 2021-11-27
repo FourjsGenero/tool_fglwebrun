@@ -684,6 +684,20 @@ FUNCTION getTime()
   RETURN data.toString()
 END FUNCTION
 
+FUNCTION replace(src STRING, oldStr STRING, newString STRING)
+  DEFINE b base.StringBuffer
+  LET b = base.StringBuffer.create()
+  CALL b.append(src)
+  CALL b.replace(oldStr, newString, 0)
+  RETURN b.toString()
+END FUNCTION
+
+FUNCTION winQuoteUrl(url STRING) RETURNS STRING
+  LET url = replace(url, "%", "^%")
+  LET url = replace(url, "&", "^&")
+  RETURN url
+END FUNCTION
+
 FUNCTION openBrowser()
   DEFINE url,cmd,browser,lbrowser,pre STRING
   DEFINE host, fglwebrungdc, defgbc STRING
@@ -711,17 +725,26 @@ FUNCTION openBrowser()
       LET cmd=sfmt('fglrun %1 %2',quote(fglwebrungdc),url)
       DISPLAY "cmd:",cmd
     OTHERWISE
-      IF isMac() THEN
-        LET cmd=sfmt("open -a %1 %2",quote(fgl_getenv("BROWSER")),url)
-      ELSE
-        LET lbrowser=browser.toLowerCase()
-        --no path separator and no .exe given: we use start
-        IF isWin() AND browser.getIndexOf("\\",1)==0 AND
-          lbrowser.getIndexOf(".exe",1)==0 THEN
-          LET pre="start "
-        END IF
-        LET cmd=sfmt('%1%2 %3',pre,quote(browser),url)
-      END IF
+        CASE
+          WHEN isMac()
+            LET browser = IIF(browser == "chrome", "Google Chrome", browser)
+            LET cmd = SFMT("open -a %1 %2", quote(browser), url)
+          WHEN isWin()
+            LET lbrowser = browser.toLowerCase()
+            --no path separator and no .exe given: we use start
+            IF browser.getIndexOf("\\", 1) == 0
+                AND lbrowser.getIndexOf(".exe", 1) == 0 THEN
+              IF browser == "edge" THEN
+                LET browser = "start"
+                LET url = "microsoft-edge:", url
+              ELSE
+                LET pre = "start "
+              END IF
+            END IF
+            LET cmd = SFMT('%1%2 %3', pre, quote(browser), winQuoteUrl(url))
+          OTHERWISE --Unix, Linux
+            LET cmd = SFMT("%1 '%2'", quote(browser), url)
+        END CASE
     END CASE
   ELSE
     CASE
