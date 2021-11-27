@@ -51,8 +51,12 @@ Of course you can add also <path_to_this_repository> in your PATH .
 Possible values
 * `chrome` - launches Chrome
 * `firefox` - launches Firefox
+* `edge` - launches Microsoft-Edge (Windows only)
+* `safari` - launches Microsoft-Edge (Mac only)
 * `none` - use this when logged in via `ssh` to only start the GAS, create the `.xcf` and print the URL (the URL can be pasted into your local browser)
 * `gdc` - use this when logged in via `ssh` and `FGLSERVER` is pointing to your desktop GDC (can be a port forwarded `FGLSERVER`)
+
+If you use another value for `BROWSER` then `fglwebrun` uses this value as executable to start the application URL.
 
 Example on Mac running the app with Google Chrome:
 ```
@@ -69,6 +73,8 @@ Example with a specific GBC directory:
 ```
 $ FGLGBCDIR=/Users/leo/gbc-1.00.43/dist/customization/mygbc fglwebrun prog
 ```
+By default the GBC in `$FGLDIR/web_utilities/gbc` is taken
+
 ## `GASPORT`- sets a custom port the GAS is listening on
 By default `fglwebrun` starts at the port 6365 to look for a GAS.
 If a connect on that port is possible and GAS answers: port taken.
