@@ -40,6 +40,14 @@ demo: fglwebrun demo.42f demo.42m
 #	FILTER=ALL $(FGLWEBRUN) demo a b
 	fglcomp -M demo&&$(FGLWEBRUN) demo a b
 
+#show cases how one could use fgldeb for debugging
+fgldeb_demo: fglwebrun fgldeb demo.42f demo.42m
+	fglcomp -M demo&&$(FGLWEBRUN) fgldeb/fgldeb demo a b
+
+fgldeb:
+	git clone https://github.com/FourjsGenero/tool_fgldeb fgldeb
+
+
 gmiurdemo: fglwebrun demo.42f demo.42m
 	$(call _env,GMI,1)$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 
