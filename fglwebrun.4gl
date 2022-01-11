@@ -399,7 +399,7 @@ END FUNCTION
 
 --create the XCF from a DomDocument
 FUNCTION createXCF(appfile,module,args,invokeShell)
-  DEFINE appfile, module STRING
+  DEFINE appfile, module, wcd STRING
   DEFINE args DYNAMIC ARRAY OF STRING
   DEFINE invokeShell,imagepathFound BOOLEAN
   DEFINE copyenv DYNAMIC ARRAY OF STRING
@@ -455,13 +455,21 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   FOR i=1 TO args.getLength()
     CALL createTag(params,"PARAMETER",args[i])
   END FOR
-  IF m_gasversion<3.2 AND  --GAS>=3.2 handles WEB_COMPONENT_DIRECTORY built in 
-    module.getCharAt(1)=="/" THEN --we were invoked via absolute path
-    LET basedir=os.Path.dirName(module)
-    LET wcdir=os.Path.join(basedir,"webcomponents")
-    IF os.Path.exists(wcdir) THEN
-      CALL log(sfmt("add <WEB_COMPONENT_DIRECTORY>:%1",wcdir))
-      CALL createTag(exe,"WEB_COMPONENT_DIRECTORY",wcdir)
+  IF (wcd:=fgl_getenv("WEB_COMPONENT_DIRECTORY")) IS NOT NULL THEN
+    LET wcd=IIF(wcd=="__CLIENTQA_DEFAULT__",
+             "$(res.path.as)/web/components;$(res.fgldir)/webcomponents;$(application.path)/webcomponents",
+             wcd)
+    CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcd)
+  ELSE
+    IF m_gasversion < 3.2
+      AND --GAS>=3.2 handles WEB_COMPONENT_DIRECTORY built in
+      module.getCharAt(1) == "/" THEN --we were invoked via absolute path
+      LET basedir = os.Path.dirName(module)
+      LET wcdir = os.Path.join(basedir, "webcomponents")
+      IF os.Path.exists(wcdir) THEN
+        CALL log(SFMT("add <WEB_COMPONENT_DIRECTORY>:%1", wcdir))
+        CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcdir)
+      END IF
     END IF
   END IF
   CASE
@@ -800,6 +808,7 @@ END FUNCTION
 
 FUNCTION checkGDC()
   DEFINE gdc,cmd STRING
+  DEFINE code INT
   IF m_GDC=="1" THEN --like GMI we connect to a running GDC instance
     LET m_GDC=getGDCPath()
   END IF
@@ -811,8 +820,8 @@ FUNCTION checkGDC()
     DISPLAY "Warning:os.Path not executable:",gdc
   END IF
   LET cmd=sfmt("%1 -u %2",quote(gdc),getGASURL())
-  CALL log(sfmt("GDC cmd:%1",cmd))
-  RUN cmd WITHOUT WAITING
+  RUN cmd RETURNING code
+  CALL log(sfmt("GDC cmd:%1 returned:%2",cmd,code))
 END FUNCTION
 
 #GAS <3.0
@@ -935,7 +944,7 @@ FUNCTION file_equal(f1, f2, ignorecase)
     IF ignorecase THEN
       LET opt = "/c"
     END IF
-    LET cmd = "fc ", opt, " ", quote(f1), " ", quote(f2)
+    LET cmd = "fc ", opt, " ", quote(f1), " ", quote(f2), ">NUL"
   ELSE
     IF ignorecase THEN
       LET opt = "-i"
