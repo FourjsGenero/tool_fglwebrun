@@ -1,4 +1,3 @@
-IMPORT os
 MAIN
   DEFINE url STRING
   IF num_args()<1 THEN
