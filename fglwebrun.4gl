@@ -449,6 +449,9 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   END IF
   --CALL createEnv(exe,"GAS_PUBLIC_DIR",getAppDataDir())
   CALL createTag(exe,"PATH",os.Path.pwd())
+  IF fgl_getenv("FGLTRACE") IS NOT NULL THEN
+    CALL createTag(exe,"DVM","fglrun --trace ")
+  END IF
   CALL createTag(exe,"MODULE",module)
   LET params=exe.createChild("PARAMETERS")
   FOR i=1 TO args.getLength()
@@ -898,7 +901,7 @@ PRIVATE FUNCTION cpChecked(srcdir,destdir,fname)
   LET src=os.Path.join(srcdir,fname)
   LET dest=os.Path.join(destdir,fname)
   IF file_equal(src,dest,FALSE) THEN
-    --DISPLAY sfmt("cpChecked: '%1' already copied",src)
+    --DISPLAY sfmt("cpChecked: '%1' already copied to:'%2'",src,dest)
     RETURN
   END IF
   IF NOT os.Path.copy(src,dest) THEN
