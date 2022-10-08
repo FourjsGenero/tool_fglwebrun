@@ -430,7 +430,8 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     LET line=copyenv[i]
     IF (eqIdx:=line.getIndexOf("=",1))>0 THEN
       LET name=line.subString(1,eqIdx-1) --may be we need to leave out some vars...candidate is _FGL_PPID
-      IF name.getIndexOf("_FGL_",1)==1 or name.getIndexOf("FGLGUI",1)==1 
+      IF name.getIndexOf("_FGL_",1)==1
+        OR name=="FGLGUI"
         OR name.getIndexOf("FGL_VMPROXY",1)==1 THEN
         CONTINUE FOR
       END IF
@@ -559,8 +560,8 @@ FUNCTION runGAS()
   DEFINE trial,i INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
-  LET cmd=quote(httpdispatch)
-  FOR trial=1 TO 4
+  FOR trial=1 TO 10
+    LET cmd=quote(httpdispatch)
     --LET filter="ERROR"
     --LET filter="ERROR PROCESS"
     IF (filter:=fgl_getenv("FILTER")) IS NULL THEN
