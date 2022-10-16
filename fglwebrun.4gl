@@ -50,7 +50,7 @@ MAIN
     IF fgl_getenv("GMI") IS NOT NULL THEN
       CALL connectToGMI()
     ELSE
-      CALL openBrowser()
+      CALL openBrowser(NULL)
     END IF 
   END IF
 END MAIN
@@ -711,11 +711,14 @@ FUNCTION winQuoteUrl(url)
   RETURN url
 END FUNCTION
 
-FUNCTION openBrowser()
+FUNCTION openBrowser(customURL)
+  DEFINE customURL STRING
   DEFINE url,cmd,browser,lbrowser,pre STRING
   DEFINE host, fglwebrungdc, defgbc STRING
   LET host = m_gashost
   CASE
+    WHEN customURL IS NOT NULL --fglwebrun used as helper module
+      LET url=customURL
     WHEN m_gasversion<3.0 OR m_html5 IS NOT NULL
       LET url=sfmt("http://%1:%2/wa/r/_%3?t=%4",host,m_port,m_appname,getTime())
     WHEN m_gbcdir IS NOT NULL
