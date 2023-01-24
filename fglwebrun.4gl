@@ -595,7 +595,11 @@ FUNCTION runGAS()
     IF isWin() THEN
       LET startgas=os.Path.join(fgl_getenv("TEMP"),"startgas_fglwebrun.bat")
       CALL writeGASBat(startgas,cmd)
-      LET cmd=sfmt("start %1",startgas)
+      IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
+        LET cmd=sfmt("start %1",startgas) --show the additional GAS console win
+      ELSE
+        LET cmd=sfmt("start /B %1 >NULL 2>&1",startgas) --hide the GAS console win
+      END IF
     END IF
     RUN cmd WITHOUT WAITING
     FOR i=1 TO 30 
