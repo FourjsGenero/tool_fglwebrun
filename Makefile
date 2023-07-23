@@ -51,6 +51,9 @@ fgldeb:
 gmiurdemo: fglwebrun demo.42f demo.42m
 	$(call _env,GMI,1)$(GBCOPT)$(UROPT)$(FGLWEBRUN) demo a b
 
+gmidemo: fglwebrun demo.42f demo.42m
+	$(call _env,GMI,1)$(FGLWEBRUN) demo a b
+
 gdcdemo: fglwebrun demo.42f demo.42m
 #note you must specify GDC
 ifndef WINDIR
