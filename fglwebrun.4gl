@@ -14,6 +14,7 @@ DEFINE m_appdata_dir STRING
 DEFINE m_gashost STRING
 DEFINE m_mydir STRING
 DEFINE m_pidfile STRING
+DEFINE m_fastprobe BOOLEAN
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -621,9 +622,14 @@ FUNCTION runGAS()
       END IF
     END IF
     RUN cmd WITHOUT WAITING
-    FOR i=1 TO 30 
+    FOR i=1 TO 30
       IF try_GASalive() THEN
         RETURN
+      END IF
+      IF i==1 THEN
+        IF try_GASaliveForASecond() THEN
+          RETURN
+        END IF
       END IF
       SLEEP 1
     END FOR
@@ -649,16 +655,20 @@ FUNCTION try_GASalive()
     DEFINE s STRING
     DEFINE found BOOLEAN
     LET c = base.Channel.create()
-    CALL log(sfmt("probe GAS on port:%1...",m_port))
+    IF NOT m_fastprobe THEN
+      CALL log(sfmt("probe GAS on port:%1...",m_port))
+    END IF
     TRY 
         CALL c.openClientSocket("127.0.0.1", m_port, "u", 1)
     CATCH
-        CALL log(sfmt("GAS probe failed:%1",err_get(status)))
+        IF NOT m_fastprobe THEN
+          CALL log(sfmt("GAS probe failed:%1",err_get(status)))
+        END IF
         RETURN FALSE
     END TRY
     CALL log("GAS probe ok")
     -- write header
-    LET s = "GET /index.html HTTP/1.1"
+    LET s = "GET /monitor HTTP/1.1"
     CALL writeLine(c, s)
     CALL writeLine(c, "Host: localhost")
     CALL writeLine(c, "User-Agent: fglrun")
@@ -669,6 +679,33 @@ FUNCTION try_GASalive()
     LET found = read_response(c)
     CALL c.close()
     RETURN found
+END FUNCTION
+
+#+ repeatedly connect to GAS in the 1st second without SLEEPs to enable a quick
+#+ application start
+FUNCTION try_GASaliveForASecond()
+    DEFINE starttime DATETIME HOUR TO FRACTION(3)
+    DEFINE diff INTERVAL MINUTE TO FRACTION(3)
+    DEFINE i INT
+    LET starttime = CURRENT
+    CALL log(sfmt("fast probe GAS on port:%1...",m_port))
+    LET m_fastprobe=TRUE
+    FOR i=1 TO 10000
+      IF try_GASalive() THEN
+        LET diff = CURRENT - starttime
+        CALL log(sfmt("httpdispatch startup time:%1s,i:%2",diff,i))
+        LET m_fastprobe=FALSE
+        RETURN TRUE
+      END IF
+      LET diff = CURRENT - starttime
+      IF INTERVAL ( 00:00.99 ) MINUTE TO FRACTION(3) <= diff THEN
+        CALL log(sfmt("try_GASaliveForASecond:needed to wait a second, diff:%2s,i:%i",diff,i))
+        LET m_fastprobe=FALSE
+        RETURN FALSE
+      END IF
+    END FOR
+    LET m_fastprobe=FALSE
+    RETURN FALSE
 END FUNCTION
 
 FUNCTION read_response(c)
@@ -1073,7 +1110,8 @@ FUNCTION checkAutoClose()
   DEFINE gasadmin STRING
   DEFINE foundSession BOOLEAN
   DEFINE i INT
-  IF m_gasversion < 3.0 OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL THEN
+  --m_pidfile not set: we did connect to an existing httpdispatch instance
+  IF m_pidfile IS NULL OR m_gasversion < 3.0 OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL THEN
     RETURN
   END IF
   LET gasadmin = getGASAdminExe()
@@ -1102,9 +1140,9 @@ FUNCTION startWatchingSessions(gasadmin)
   LET owndir = os.Path.dirName(arg_val(0))
   LET fglwebrunwatch = os.Path.join(owndir, "fglwebrunwatch.42m")
   LET cmd =
-      SFMT("fglrun %1 %2 %3 %4",
-          quote(fglwebrunwatch), quote(gasadmin), m_adminport, quote(m_pidfile))
-  DISPLAY "fglwebrun: start watching sessions with cmd:", cmd
+    SFMT("fglrun %1 %2 %3 %4",
+      quote(fglwebrunwatch), quote(gasadmin), m_adminport, quote(m_pidfile))
+  CALL log(SFMT("fglwebrun: start watching sessions with cmd:%1", cmd))
   RUN cmd WITHOUT WAITING
 END FUNCTION
 
@@ -1113,7 +1151,7 @@ FUNCTION terminateGAS(reason, pidfile)
   DEFINE txt TEXT
   DEFINE pid, code INT
 
-  DISPLAY SFMT("fglwebrun:terminate GAS,reason:%1.", reason)
+  CALL log(SFMT("fglwebrun:terminate GAS,reason:%1.", reason))
   LOCATE txt IN FILE pidfile
   LET pid_s = txt
   LET pid = pid_s
@@ -1123,7 +1161,7 @@ FUNCTION terminateGAS(reason, pidfile)
             pidfile, pid_s))
   END IF
   CALL os.Path.delete(pidfile) RETURNING status
-  LET cmd = IIF(isWin(), SFMT("taskkill /pid %1", pid), SFMT("kill %1", pid))
+  LET cmd = IIF(isWin(), SFMT("taskkill /pid %1", pid), SFMT("kill -9 %1", pid))
   RUN cmd RETURNING code
   IF code THEN
     CALL myerr(
