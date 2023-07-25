@@ -34,6 +34,7 @@ Since GAS3.10 GBC is *also* searched in $FGLDIR/web_utilities/gbc/gbc
 2. fglwebrun checks httpdispatch on port 6395 ( the default GAS port is 6394 ).
 If it is not up and running it starts it on demand (with the option to output on stdout) 
 3. It opens your default browser pointing to the suitable URL for the created xcf: voila, you should see the app, and DISPLAY statements appear on stdout like via GDC.
+4. For all GAS >= 3.0 the httpdispatch program is terminated if it doesn't have active sessions/GUI programs anymore (auto close similar to GDC's -X command line switch).
 
 # Installation
 
@@ -123,6 +124,11 @@ Connects to a running GDC instance by inspecting FGLSERVER
 $ GDC=/Users/leo/Applications/gdc fglwebrun prog
 ```
 If the GDC environment variable contains a valid path name to GDC , GDC is started and runs the program
+
+## `NO_AUTOCLOSE` - switches off the auto close mechanism in case of problems with the auto close.
+```
+$ NO_AUTOCLOSE=1 fglwebrun prog
+```
 
 # Known problems
 

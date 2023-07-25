@@ -3,7 +3,7 @@ IMPORT os
 DEFINE m_gasdir STRING
 DEFINE m_gasversion FLOAT
 DEFINE m_fgldir STRING
-DEFINE m_port INT
+DEFINE m_port, m_adminport INT
 DEFINE m_specific_port BOOLEAN
 DEFINE m_isMac BOOLEAN
 DEFINE m_gbcdir,m_gbcname STRING
@@ -13,6 +13,7 @@ DEFINE m_html5 STRING
 DEFINE m_appdata_dir STRING
 DEFINE m_gashost STRING
 DEFINE m_mydir STRING
+DEFINE m_pidfile STRING
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -53,6 +54,7 @@ MAIN
       CALL openBrowser(NULL)
     END IF 
   END IF
+  CALL checkAutoClose()
 END MAIN
 
 FUNCTION setupVariables()
@@ -81,6 +83,7 @@ FUNCTION setupVariables()
     LET m_specific_port = TRUE
     LET m_port = port
   END IF
+  LET m_adminport = m_port + 200
   LET m_mydir=os.Path.fullPath(os.Path.dirName(arg_val(0)))
   LET m_isMac=NULL
   IF m_gasdir IS NULL THEN
@@ -555,6 +558,18 @@ FUNCTION getGASExe()
   RETURN httpdispatch
 END FUNCTION
 
+FUNCTION getGASAdminExe()
+  DEFINE gasbindir, gasadmin STRING
+  LET gasbindir = os.Path.join(m_gasdir, "bin")
+  LET gasadmin = IIF(isWin(), "gasadmin.exe", "gasadmin")
+  LET gasadmin = os.Path.join(gasbindir, gasadmin)
+  IF NOT os.Path.exists(gasadmin) OR NOT os.Path.executable(gasadmin) THEN
+    DISPLAY (SFMT("Can't find %1", gasadmin))
+    RETURN NULL
+  END IF
+  RETURN gasadmin
+END FUNCTION
+
 FUNCTION runGAS()
   DEFINE cmd,httpdispatch,filter,startgas STRING
   DEFINE trial,i INT
@@ -569,7 +584,7 @@ FUNCTION runGAS()
       --other possible values "ERROR" "ALL"
       LET filter="ERROR"
     END IF
-    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),sfmt(' -E "res.ic.admin.port=%1"',m_port+200),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
+    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),sfmt(' -E "res.ic.admin.port=%1"',m_adminport),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
     --comment the following line if you want  to disable AUI tree watching
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
     IF NOT isWin() THEN
@@ -586,6 +601,10 @@ FUNCTION runGAS()
     ELSE
       --renamed in 2.50...
       LET cmd=cmd,' -E "res.appdata.path=',bs2slash( getAppDataDir() ),'"'
+    END IF
+    IF m_gasversion>=3.0 AND getGASAdminExe() IS NOT NULL AND fgl_getenv("NO_AUTOCLOSE") IS NULL THEN --enable fglwebrunwatch
+      CALL createPIDfile()
+      LET cmd = cmd, " --pid-file ", quote(m_pidfile)
     END IF
     IF redirect_error THEN
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
@@ -1041,4 +1060,110 @@ FUNCTION makeTempName()
   LET curr=sb.toString()
   LET tmpName=os.Path.join(tmpDir,sfmt("fgl_%1_%2",fgl_getpid(),curr))
   RETURN tmpName
+END FUNCTION
+
+FUNCTION createPIDfile()
+  LET m_pidfile = makeTempName()
+END FUNCTION
+
+#+ first check if we can monitor an active session
+#+ if that works we poll with fglwebrunwatch in the BG until
+#+ there are no more active sessions
+FUNCTION checkAutoClose()
+  DEFINE gasadmin STRING
+  DEFINE foundSession BOOLEAN
+  DEFINE i INT
+  IF m_gasversion < 3.0 OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL THEN
+    RETURN
+  END IF
+  LET gasadmin = getGASAdminExe()
+  IF gasadmin IS NULL THEN
+    DISPLAY "fglwebrun: no gasadmin found (GAS too old?). No autoclose available."
+    RETURN --ancient GAS
+  END IF
+  FOR i = 1 TO 10
+    LET foundSession = hasGASSession(gasadmin, m_adminport)
+    IF foundSession IS NULL THEN
+      RETURN
+    END IF
+    IF foundSession THEN
+      CALL startWatchingSessions(gasadmin)
+      EXIT FOR
+    END IF
+    SLEEP 1
+  END FOR
+  IF NOT foundSession THEN
+    CALL terminateGAS("No initial session found", m_pidfile)
+  END IF
+END FUNCTION
+
+FUNCTION startWatchingSessions(gasadmin)
+  DEFINE gasadmin, owndir, fglwebrunwatch, cmd STRING
+  LET owndir = os.Path.dirName(arg_val(0))
+  LET fglwebrunwatch = os.Path.join(owndir, "fglwebrunwatch.42m")
+  LET cmd =
+      SFMT("fglrun %1 %2 %3 %4",
+          quote(fglwebrunwatch), quote(gasadmin), m_adminport, quote(m_pidfile))
+  DISPLAY "fglwebrun: start watching sessions with cmd:", cmd
+  RUN cmd WITHOUT WAITING
+END FUNCTION
+
+FUNCTION terminateGAS(reason, pidfile)
+  DEFINE reason, pidfile, pid_s, cmd STRING
+  DEFINE txt TEXT
+  DEFINE pid, code INT
+
+  DISPLAY SFMT("fglwebrun:terminate GAS,reason:%1.", reason)
+  LOCATE txt IN FILE pidfile
+  LET pid_s = txt
+  LET pid = pid_s
+  IF pid_s IS NULL OR pid_s.getLength() == 0 OR pid IS NULL THEN
+    CALL myerr(
+        SFMT("terminateGAS(): can't read pidfile:'%1',result:%2",
+            pidfile, pid_s))
+  END IF
+  CALL os.Path.delete(pidfile) RETURNING status
+  LET cmd = IIF(isWin(), SFMT("taskkill /pid %1", pid), SFMT("kill %1", pid))
+  RUN cmd RETURNING code
+  IF code THEN
+    CALL myerr(
+        SFMT("fglwebrun:kill command for GAS '%1' failed with code:%2",
+            cmd, code))
+  END IF
+END FUNCTION
+
+#+ checks the session list
+#+ @returns: TRUE if at least a one session is found, FALSE if no session found,
+#+           NULL in the error case (gasadmin can't connect or found the wrong service)
+FUNCTION hasGASSession(gasadmin, port)
+  DEFINE gasadmin, cmd, line STRING
+  DEFINE port, i INT
+  DEFINE session_list_seen BOOLEAN
+  DEFINE arr DYNAMIC ARRAY OF STRING
+  LET cmd = SFMT('%1 -E "res.ic.admin.port=%2" --list-sessions 2>&1', quote(gasadmin), port)
+  CALL file_get_output(cmd, arr)
+  FOR i = 1 TO arr.getLength()
+    LET line = arr[i]
+    IF line.getIndexOf("Session list", 1) <> 0 THEN
+      LET session_list_seen = TRUE
+      CONTINUE FOR
+    END IF
+    IF line.getIndexOf("Failed to connect to the dispatcher socket", 1) <> 0
+        OR line.getIndexOf("Unable to connect to dispatcher", 1) <> 0
+        OR line.getIndexOf("Failed to receive data from the dispatcher", 1)
+            <> 0 THEN
+      CALL myerr(SFMT("gasadmin did return:%1", line))
+      RETURN NULL
+    END IF
+    --Just pick a line of interest, if that appears we have at least one session
+    IF line.getIndexOf("Pid:", 1) <> 0 THEN
+      --DISPLAY "hasGASSession: found Pid:", line
+      RETURN TRUE
+    END IF
+  END FOR
+  IF session_list_seen THEN
+    RETURN FALSE
+  END IF
+  CALL myerr("gasadmin didn't get regular output")
+  RETURN NULL
 END FUNCTION

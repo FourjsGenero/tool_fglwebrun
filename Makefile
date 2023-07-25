@@ -34,7 +34,7 @@ endif
 GBCOPT=$(call _env,FGLGBCDIR,$(FGLGBCDIR))
 UROPT=$(call _env,FGLPROFILE,universal)
 
-all: fglwebrun.42m fglwebrungdc.42m runonserver.42m getgdcpath.42m
+all: fglwebrun.42m fglwebrunwatch.42m fglwebrungdc.42m runonserver.42m getgdcpath.42m
 
 demo: fglwebrun demo.42f demo.42m
 #	FILTER=ALL $(FGLWEBRUN) demo a b
