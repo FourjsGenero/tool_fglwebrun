@@ -699,7 +699,7 @@ FUNCTION try_GASaliveForASecond()
       END IF
       LET diff = CURRENT - starttime
       IF INTERVAL ( 00:00.99 ) MINUTE TO FRACTION(3) <= diff THEN
-        CALL log(sfmt("try_GASaliveForASecond:needed to wait a second, diff:%2s,i:%i",diff,i))
+        CALL log(sfmt("try_GASaliveForASecond:needed to wait a second, diff:%1s,i:%2",diff,i))
         LET m_fastprobe=FALSE
         RETURN FALSE
       END IF
@@ -1112,6 +1112,7 @@ FUNCTION checkAutoClose()
   DEFINE i INT
   --m_pidfile not set: we did connect to an existing httpdispatch instance
   IF m_pidfile IS NULL OR m_gasversion < 3.0 OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL THEN
+    DISPLAY "no autoclose m_pidfile:",m_pidfile,",m_gasversion:",m_gasversion
     RETURN
   END IF
   LET gasadmin = getGASAdminExe()
@@ -1161,7 +1162,7 @@ FUNCTION terminateGAS(reason, pidfile)
             pidfile, pid_s))
   END IF
   CALL os.Path.delete(pidfile) RETURNING status
-  LET cmd = IIF(isWin(), SFMT("taskkill /pid %1", pid), SFMT("kill -9 %1", pid))
+  LET cmd = IIF(isWin(), SFMT("taskkill /f /pid %1", pid), SFMT("kill -9 %1", pid))
   RUN cmd RETURNING code
   IF code THEN
     CALL myerr(
