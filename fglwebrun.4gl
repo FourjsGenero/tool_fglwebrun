@@ -572,7 +572,7 @@ FUNCTION getGASAdminExe()
 END FUNCTION
 
 FUNCTION runGAS()
-  DEFINE cmd,httpdispatch,filter,startgas STRING
+  DEFINE cmd,httpdispatch,filter STRING
   DEFINE trial,i INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
@@ -1178,7 +1178,10 @@ FUNCTION hasGASSession(gasadmin, port)
   DEFINE port, i INT
   DEFINE session_list_seen BOOLEAN
   DEFINE arr DYNAMIC ARRAY OF STRING
-  LET cmd = SFMT('"%1 -E "res.ic.admin.port=%2" --list-sessions 2>&1"', quote(gasadmin), port)
+  LET cmd = SFMT('%1 -E "res.ic.admin.port=%2" --list-sessions 2>&1', quote(gasadmin), port)
+  IF isWin() AND cmd.getIndexOf('"',1)==1 THEN
+    LET cmd='"',cmd,'"' --need another quote for quoted program names
+  END IF
   CALL log(sfmt("hasGASSession() gasadmin cmd:%1",cmd))
   CALL file_get_output(cmd, arr)
   FOR i = 1 TO arr.getLength()
