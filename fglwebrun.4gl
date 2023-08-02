@@ -585,11 +585,16 @@ FUNCTION runGAS()
       --other possible values "ERROR" "ALL"
       LET filter="ERROR"
     END IF
-    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),sfmt(' -E "res.ic.admin.port=%1"',m_adminport),' -E "res.log.output.type=CONSOLE" -E ',sfmt('"res.log.categories_filter=%1"',filter)
+    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),sfmt(' -E "res.ic.admin.port=%1"',m_adminport),' -E ',sfmt('"res.log.categories_filter=%1"',filter)
+
     --comment the following line if you want  to disable AUI tree watching
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
     IF NOT isWin() THEN
-      LET cmd=cmd,' -E "res.log.output.path=/tmp"'
+      LET cmd=cmd,' -E "res.log.output.path=/tmp" -E "res.log.output.type=CONSOLE"'
+    ELSE
+      IF fgl_getenv("TRYCONSOLE") IS NOT NULL THEN
+        LET cmd=cmd,' -E "res.log.output.type=CONSOLE"'
+      END IF
     END IF
     IF m_gbcdir IS NOT NULL THEN
       LET cmd=cmd,
@@ -613,12 +618,13 @@ FUNCTION runGAS()
     
     CALL log(sfmt("RUN %1 ...",cmd))
     IF isWin() THEN
-      LET startgas=os.Path.join(fgl_getenv("TEMP"),"startgas_fglwebrun.bat")
-      CALL writeGASBat(startgas,cmd)
+      IF cmd.getIndexOf('"',1)==1 THEN --executable is quoted:we need double quoting and employ cmd.exe
+        LET cmd=sfmt('%1 /C "%2"',fgl_getenv("COMSPEC"),cmd)
+      END IF
       IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
-        LET cmd=sfmt("start %1",startgas) --show the additional GAS console win
+        LET cmd=sfmt("start %1",cmd) --show the additional GAS console win
       ELSE
-        LET cmd=sfmt("start /B %1 >NULL 2>&1",startgas) --hide the GAS console win
+        LET cmd=sfmt("start /B %1 >NULL 2>&1",cmd) --hide the GAS console win
       END IF
     END IF
     RUN cmd WITHOUT WAITING
@@ -627,7 +633,7 @@ FUNCTION runGAS()
         RETURN
       END IF
       IF i==1 THEN
-        IF try_GASaliveForASecond() THEN
+        IF try_GASAliveFor2Seconds() THEN
           RETURN
         END IF
       END IF
@@ -639,15 +645,6 @@ FUNCTION runGAS()
     LET m_port=m_port+1
   END FOR
   CALL myerr("Can't startup GAS, check your configuration, FGLASDIR, GASPORT")
-END FUNCTION
-
-FUNCTION writeGASBat(bat,cmd)
-  DEFINE bat,cmd STRING
-  DEFINE chan base.Channel
-  LET chan=base.Channel.create()
-  CALL chan.openFile(bat,"w")
-  CALL chan.writeLine(cmd)
-  CALL chan.close()
 END FUNCTION
 
 FUNCTION try_GASalive()
@@ -681,9 +678,9 @@ FUNCTION try_GASalive()
     RETURN found
 END FUNCTION
 
-#+ repeatedly connect to GAS in the 1st second without SLEEPs to enable a quick
-#+ application start
-FUNCTION try_GASaliveForASecond()
+#+ repeatedly connect to GAS in the 1st 2 seconds without SLEEPs to enable a quick
+#+ application start (this causes high CPU load)
+FUNCTION try_GASAliveFor2Seconds()
     DEFINE starttime DATETIME HOUR TO FRACTION(3)
     DEFINE diff INTERVAL MINUTE TO FRACTION(3)
     DEFINE i INT
@@ -698,8 +695,8 @@ FUNCTION try_GASaliveForASecond()
         RETURN TRUE
       END IF
       LET diff = CURRENT - starttime
-      IF INTERVAL ( 00:00.99 ) MINUTE TO FRACTION(3) <= diff THEN
-        CALL log(sfmt("try_GASaliveForASecond:needed to wait a second, diff:%1s,i:%2",diff,i))
+      IF INTERVAL ( 00:01.99 ) MINUTE TO FRACTION(3) <= diff THEN
+        CALL log(sfmt("try_GASaliveForASecond:needed to wait 2 seconds, diff:%1s,i:%2",diff,i))
         LET m_fastprobe=FALSE
         RETURN FALSE
       END IF
@@ -1162,12 +1159,14 @@ FUNCTION terminateGAS(reason, pidfile)
             pidfile, pid_s))
   END IF
   CALL os.Path.delete(pidfile) RETURNING status
-  LET cmd = IIF(isWin(), SFMT("taskkill /f /pid %1", pid), SFMT("kill -9 %1", pid))
+  LET cmd = IIF(isWin(), SFMT("taskkill /f /pid %1 >NUL", pid), SFMT("kill -9 %1", pid))
   RUN cmd RETURNING code
   IF code THEN
     CALL myerr(
         SFMT("fglwebrun:kill command for GAS '%1' failed with code:%2",
             cmd, code))
+  ELSE
+    DISPLAY SFMT("httpdispatch has been terminated,reason:%1.", reason)
   END IF
 END FUNCTION
 
@@ -1179,7 +1178,8 @@ FUNCTION hasGASSession(gasadmin, port)
   DEFINE port, i INT
   DEFINE session_list_seen BOOLEAN
   DEFINE arr DYNAMIC ARRAY OF STRING
-  LET cmd = SFMT('%1 -E "res.ic.admin.port=%2" --list-sessions 2>&1', quote(gasadmin), port)
+  LET cmd = SFMT('"%1 -E "res.ic.admin.port=%2" --list-sessions 2>&1"', quote(gasadmin), port)
+  CALL log(sfmt("hasGASSession() gasadmin cmd:%1",cmd))
   CALL file_get_output(cmd, arr)
   FOR i = 1 TO arr.getLength()
     LET line = arr[i]
@@ -1196,13 +1196,17 @@ FUNCTION hasGASSession(gasadmin, port)
     END IF
     --Just pick a line of interest, if that appears we have at least one session
     IF line.getIndexOf("Pid:", 1) <> 0 THEN
-      --DISPLAY "hasGASSession: found Pid:", line
+      CALL log(sfmt("hasGASSession: found Pid:%1", line))
       RETURN TRUE
     END IF
   END FOR
   IF session_list_seen THEN
     RETURN FALSE
   END IF
-  CALL myerr("gasadmin didn't get regular output")
+  LET line = sfmt("gasadmin unexpected output for command:%1 :",cmd)
+  FOR i = 1 TO arr.getLength()
+    LET line = line, "\n", arr[i]
+  END FOR
+  CALL myerr(line)
   RETURN NULL
 END FUNCTION

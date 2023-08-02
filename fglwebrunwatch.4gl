@@ -35,7 +35,7 @@ MAIN
       RETURN
     END IF
     IF NOT foundSession THEN
-      CALL fglwebrun.terminateGAS("No sessions left", pidfile)
+      CALL fglwebrun.terminateGAS("no sessions left", pidfile)
       EXIT WHILE
     END IF
   END WHILE
