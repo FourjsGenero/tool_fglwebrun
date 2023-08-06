@@ -572,7 +572,7 @@ FUNCTION getGASAdminExe()
 END FUNCTION
 
 FUNCTION runGAS()
-  DEFINE cmd,httpdispatch,filter STRING
+  DEFINE cmd,httpdispatch,filter,comspec STRING
   DEFINE trial,i INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
@@ -589,12 +589,11 @@ FUNCTION runGAS()
 
     --comment the following line if you want  to disable AUI tree watching
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
+    IF fgl_getenv("OMITCONSOLE") IS NULL THEN
+      LET cmd = cmd, ' -E "res.log.output.type=CONSOLE"'
+    END IF
     IF NOT isWin() THEN
-      LET cmd=cmd,' -E "res.log.output.path=/tmp" -E "res.log.output.type=CONSOLE"'
-    ELSE
-      IF fgl_getenv("TRYCONSOLE") IS NOT NULL THEN
-        LET cmd=cmd,' -E "res.log.output.type=CONSOLE"'
-      END IF
+      LET cmd=cmd,' -E "res.log.output.path=/tmp"'
     END IF
     IF m_gbcdir IS NOT NULL THEN
       LET cmd=cmd,
@@ -618,9 +617,12 @@ FUNCTION runGAS()
     
     CALL log(sfmt("RUN %1 ...",cmd))
     IF isWin() THEN
-      IF cmd.getIndexOf('"',1)==1 THEN --executable is quoted:we need double quoting and employ cmd.exe
-        LET cmd=sfmt('%1 /C "%2"',fgl_getenv("COMSPEC"),cmd)
+      IF cmd.getIndexOf('"',1)==1 THEN --executable is quoted:we need double quoting and employ cmd.exe (again)
+        LET comspec=fgl_getenv("COMSPEC")
+        LET comspec=IIF(comspec.getIndexOf("cmd.exe",1)<>0, comspec,"cmd.exe")
+        LET cmd=sfmt('%1 /C "%2"',comspec,cmd)
       END IF
+
       IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
         LET cmd=sfmt("start %1",cmd) --show the additional GAS console win
       ELSE
