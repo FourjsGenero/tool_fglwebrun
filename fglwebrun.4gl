@@ -622,12 +622,17 @@ FUNCTION runGAS()
         LET comspec=IIF(comspec.getIndexOf("cmd.exe",1)<>0, comspec,"cmd.exe")
         LET cmd=sfmt('%1 /C "%2"',comspec,cmd)
       END IF
-
+      IF fgl_getenv("VERBOSE") IS NULL AND fgl_getenv("FILTER") IS NULL THEN
+        LET cmd=cmd," >NUL 2>&1"
+      END IF
+      { --the following invocation seems to let uaproxy processes open
+        --in certain situations in clientqa, so we omit the 2nd console for now
       IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
         LET cmd=sfmt("start %1",cmd) --show the additional GAS console win
       ELSE
         LET cmd=sfmt("start /B %1 >NULL 2>&1",cmd) --hide the GAS console win
       END IF
+      }
     END IF
     RUN cmd WITHOUT WAITING
     FOR i=1 TO 30
