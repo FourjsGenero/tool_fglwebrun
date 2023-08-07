@@ -629,7 +629,7 @@ FUNCTION runGAS()
       IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
         LET cmd=sfmt("start %1",cmd) --show the additional GAS console win
       ELSE
-        LET cmd=sfmt("start /B %1 >NULL 2>&1",cmd) --hide the GAS console win
+        LET cmd=sfmt("start /B %1 >NUL 2>&1",cmd) --hide the GAS console win
       END IF
     END IF
     RUN cmd WITHOUT WAITING
