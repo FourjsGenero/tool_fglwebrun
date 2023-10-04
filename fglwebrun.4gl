@@ -15,6 +15,7 @@ DEFINE m_gashost STRING
 DEFINE m_mydir STRING
 DEFINE m_pidfile STRING
 DEFINE m_fastprobe BOOLEAN
+DEFINE m_nobrowser BOOLEAN
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -796,6 +797,7 @@ FUNCTION openBrowser(customURL)
     CASE
     WHEN browser=="n" OR browser="no" OR browser=="none" 
       DISPLAY "Copy the following URL into your browser:"
+        LET m_nobrowser = TRUE
       DISPLAY url
       RETURN
     WHEN browser=="gdc"
@@ -1113,8 +1115,13 @@ FUNCTION checkAutoClose()
   DEFINE foundSession BOOLEAN
   DEFINE i INT
   --m_pidfile not set: we did connect to an existing httpdispatch instance
-  IF m_pidfile IS NULL OR m_gasversion < 3.0 OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL THEN
-    DISPLAY "no autoclose m_pidfile:",m_pidfile,",m_gasversion:",m_gasversion
+  IF m_pidfile IS NULL
+      OR m_gasversion < 3.0
+      OR fgl_getenv("NO_AUTOCLOSE")
+      OR m_nobrowser IS NOT NULL THEN
+    CALL log(
+        SFMT("checkAutoClose: no autoclose m_pidfile:%1,m_gasversion:%2,NO_AUTOCLOSE:%3,no browser:%4",
+            m_pidfile, m_gasversion, fgl_getenv("NO_AUTOCLOSE"), m_nobrowser))
     RETURN
   END IF
   LET gasadmin = getGASAdminExe()
