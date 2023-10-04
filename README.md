@@ -134,6 +134,11 @@ $ NO_AUTOCLOSE=1 fglwebrun prog
 ```
 $ GBCQUERY="debugmode=1&contextmenu=1" fglwebrun prog
 ```
+(windows)
+```
+>set GBCQUERY=debugmode=1^&contextmenu=1&&fglwebrun prog
+```
+
 See also the GBC [documentation](https://4js.com/online_documentation/fjs-gbc-manual-html/?path=fjs-fgl-manual#gbc-topics/r_gbc_url.html).
 
 
