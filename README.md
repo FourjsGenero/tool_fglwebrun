@@ -130,6 +130,13 @@ If the GDC environment variable contains a valid path name to GDC , GDC is start
 $ NO_AUTOCLOSE=1 fglwebrun prog
 ```
 
+## `GBCQUERY` - adds GBC specific query parameters to the URL fglwebrun creates.
+```
+$ GBCQUERY="debugmode=1&contextmenu=1" fglwebrun prog
+```
+See also the GBC [documentation](https://4js.com/online_documentation/fjs-gbc-manual-html/?path=fjs-fgl-manual#gbc-topics/r_gbc_url.html).
+
+
 # Known problems
 
 If `httpdispatch` was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.

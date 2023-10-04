@@ -767,6 +767,14 @@ FUNCTION replace(src, oldStr, newString)
   RETURN b.toString()
 END FUNCTION
 
+FUNCTION quoteUrl(url)
+  DEFINE url STRING
+  IF url.getIndexOf(" ",1)>0  OR url.getIndexOf("?",1)>0 OR url.getIndexOf("&",1)>0 THEN
+    LET url='"',url,'"'
+  END IF
+  RETURN url
+END FUNCTION
+
 FUNCTION winQuoteUrl(url)
   DEFINE url STRING
   LET url = replace(url, "%", "^%")
@@ -802,13 +810,13 @@ FUNCTION openBrowser(customURL)
       RETURN
     WHEN browser=="gdc"
       LET fglwebrungdc=os.Path.join(fgl_getenv("FGLWEBRUNDIR"),"fglwebrungdc")
-      LET cmd=sfmt('fglrun %1 %2',quote(fglwebrungdc),url)
+      LET cmd=sfmt('fglrun %1 %2',quote(fglwebrungdc),quoteUrl(url))
       DISPLAY "cmd:",cmd
     OTHERWISE
         CASE
           WHEN isMac()
             LET browser = IIF(browser == "chrome", "Google Chrome", browser)
-            LET cmd = SFMT("open -a %1 %2", quote(browser), url)
+            LET cmd = SFMT("open -a %1 %2", quote(browser), quoteUrl(url))
           WHEN isWin()
             LET lbrowser = browser.toLowerCase()
             --no path separator and no .exe given: we use start
@@ -823,17 +831,17 @@ FUNCTION openBrowser(customURL)
             END IF
             LET cmd = SFMT('%1%2 %3', pre, quote(browser), winQuoteUrl(url))
           OTHERWISE --Unix, Linux
-            LET cmd = SFMT("%1 '%2'", quote(browser), url)
+            LET cmd = SFMT("%1 '%2'", quote(browser), quoteUrl(url))
         END CASE
     END CASE
   ELSE
     CASE
       WHEN isWin() 
-        LET cmd=sfmt("start %1",url)
+        LET cmd=sfmt("start %1",winQuoteUrl(url))
       WHEN isMac() 
-        LET cmd=sfmt('open "%1"',url)
+        LET cmd=sfmt('open %1',quoteUrl(url))
       OTHERWISE --assume kinda linux
-        LET cmd=sfmt("xdg-open %1",url)
+        LET cmd=sfmt("xdg-open %1",quoteUrl(url))
     END CASE
   END IF
   CALL log(sfmt("browser cmd:%1",cmd))
@@ -841,7 +849,13 @@ FUNCTION openBrowser(customURL)
 END FUNCTION
 
 FUNCTION getGASURL()
-  RETURN sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,m_appname)
+  DEFINE url, q STRING
+  LET url=sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,m_appname)
+  LET q=fgl_getenv("GBCQUERY")
+  IF q IS NOT NULL THEN
+    LET url=url,"?",q
+  END IF
+  RETURN url
 END FUNCTION
 
 FUNCTION connectToGMI()
