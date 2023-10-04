@@ -133,7 +133,8 @@ $ NO_AUTOCLOSE=1 fglwebrun prog
 # Known problems
 
 If `httpdispatch` was started in the current terminal it may occasionally pollute this terminal with unwanted output even if the started app did already terminate.
-Unfortunately there is no httpdispatch configuration equivalent to a GDC started with `-X` option (terminate after the last fglrun closed the connection...)
-The only solution is to kill `httpdispatch` manually.
-The other solution is to just change the terminal once GAS is up and running, another invocation of `fglwebrun` will take the same GAS.
+By default fglwebrun spawns a process to check active GAS sessions (fglwebrunwatch) and terminates the GAS if there are no more active sessions (the equivalent to a GDC started with `-X`).
+This doesn't apply if `NO_AUTOCLOSE` is set or the `BROWSER` is set to `none`.
+In this case either kill `httpdispatch` manually or
+just change the terminal once GAS is up and running, another invocation of `fglwebrun` will take the same GAS.
 
