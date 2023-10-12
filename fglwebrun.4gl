@@ -1131,8 +1131,8 @@ FUNCTION checkAutoClose()
   --m_pidfile not set: we did connect to an existing httpdispatch instance
   IF m_pidfile IS NULL
       OR m_gasversion < 3.0
-      OR fgl_getenv("NO_AUTOCLOSE")
-      OR m_nobrowser IS NOT NULL THEN
+      OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL
+      OR m_nobrowser THEN
     CALL log(
         SFMT("checkAutoClose: no autoclose m_pidfile:%1,m_gasversion:%2,NO_AUTOCLOSE:%3,no browser:%4",
             m_pidfile, m_gasversion, fgl_getenv("NO_AUTOCLOSE"), m_nobrowser))
