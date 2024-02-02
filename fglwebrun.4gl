@@ -401,6 +401,18 @@ FUNCTION createGASApp()
   CALL createXCF(appfile,arg1,args,invokeShell)
 END FUNCTION
 
+FUNCTION createWEB_COMPONENT_DIRECTORY(exe, wcd)
+  DEFINE exe om.DomNode
+  DEFINE wcd, sep STRING
+  LET sep = os.Path.separator()
+  LET wcd =
+    IIF(wcd == "__CLIENTQA_DEFAULT__",
+      SFMT("$(res.path.as)%1web%2components;$(res.fgldir)%3webcomponents;$(application.path)%4webcomponents",
+        sep, sep, sep, sep),
+      wcd)
+  CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcd)
+END FUNCTION
+
 --create the XCF from a DomDocument
 FUNCTION createXCF(appfile,module,args,invokeShell)
   DEFINE appfile, module, wcd STRING
@@ -464,10 +476,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
     CALL createTag(params,"PARAMETER",args[i])
   END FOR
   IF (wcd:=fgl_getenv("WEB_COMPONENT_DIRECTORY")) IS NOT NULL THEN
-    LET wcd=IIF(wcd=="__CLIENTQA_DEFAULT__",
-             "$(res.path.as)/web/components;$(res.fgldir)/webcomponents;$(application.path)/webcomponents",
-             wcd)
-    CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcd)
+    CALL createWEB_COMPONENT_DIRECTORY(exe, wcd)
   ELSE
     IF m_gasversion < 3.2
       AND --GAS>=3.2 handles WEB_COMPONENT_DIRECTORY built in
