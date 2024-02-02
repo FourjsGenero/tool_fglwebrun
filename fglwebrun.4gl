@@ -403,12 +403,14 @@ END FUNCTION
 
 FUNCTION createWEB_COMPONENT_DIRECTORY(exe, wcd)
   DEFINE exe om.DomNode
-  DEFINE wcd, sep STRING
+  DEFINE wcd, sep, p1, p2, p3 STRING
   LET sep = os.Path.separator()
+  LET p1=bs2slash(sfmt("%1/web/components",m_gasdir))
+  LET p2=bs2slash(sfmt("%1/webcomponents",m_fgldir))
+  LET p3=bs2slash(sfmt("%1/webcomponents",os.Path.pwd()))
   LET wcd =
     IIF(wcd == "__CLIENTQA_DEFAULT__",
-      SFMT("$(res.path.as)%1web%2components;$(res.fgldir)%3webcomponents;$(application.path)%4webcomponents",
-        sep, sep, sep, sep),
+      SFMT("%1;%2;%3", p1, p2, p3),
       wcd)
   CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcd)
 END FUNCTION
