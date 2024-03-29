@@ -68,11 +68,7 @@ FUNCTION setupVariables()
   LET m_html5=fgl_getenv("HTML5")
   LET m_gashost = fgl_getenv("FGLCOMPUTER")
   IF m_gashost IS NULL THEN
-    IF NOT isWin() THEN
-      LET m_gashost = getProgramOutput("hostname")
-    ELSE
-      LET m_gashost = "localhost"
-    END IF
+    LET m_gashost = "localhost"
   END IF
   LET portstr = fgl_getenv("GASPORT")
   IF portstr.equals("default") THEN
@@ -584,7 +580,7 @@ FUNCTION getGASAdminExe()
 END FUNCTION
 
 FUNCTION runGAS()
-  DEFINE cmd,httpdispatch,filter,comspec STRING
+  DEFINE cmd, httpdispatch, filter, comspec, portcmd STRING
   DEFINE trial,i INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
@@ -597,7 +593,20 @@ FUNCTION runGAS()
       --other possible values "ERROR" "ALL"
       LET filter="ERROR"
     END IF
-    LET cmd=cmd,' -p ',quote(m_gasdir),sfmt(' -E "res.ic.port.offset=%1"',m_port-6300),sfmt(' -E "res.ic.admin.port=%1"',m_adminport),' -E ',sfmt('"res.log.categories_filter=%1"',filter)
+    LET portcmd =
+        ' -E ',
+        IIF(m_gasversion < 5.0,
+            SFMT('"res.ic.port.offset=%1"', m_port - 6300),
+            --since version 5.0 the offset has been replaced by port...
+            SFMT('"res.ic.server.port=%1"', m_port))
+    LET cmd =
+        cmd,
+        ' -p ',
+        quote(m_gasdir),
+        portcmd,
+        SFMT(' -E "res.ic.admin.port=%1"', m_adminport),
+        ' -E ',
+        SFMT('"res.log.categories_filter=%1"', filter)
 
     --comment the following line if you want  to disable AUI tree watching
     LET cmd=cmd,'  -E res.uaproxy.param=--development '
