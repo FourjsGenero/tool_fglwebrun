@@ -16,6 +16,11 @@ DEFINE m_mydir STRING
 DEFINE m_pidfile STRING
 DEFINE m_fastprobe BOOLEAN
 DEFINE m_nobrowser BOOLEAN
+DEFINE m_wc_tempdir STRING
+DEFINE m_isClientQAWC
+  BOOLEAN --set if we run inside clientqa and need special web component locations
+CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
+CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -397,18 +402,37 @@ FUNCTION createGASApp()
   CALL createXCF(appfile,arg1,args,invokeShell)
 END FUNCTION
 
+#+ creates a temp dir for hosting clientqa webcomponents
+FUNCTION checkWC_TEMPDIR()
+  LET m_wc_tempdir = fgl_getenv(FGLQA_WC_TEMPDIR)
+  IF m_wc_tempdir IS NOT NULL THEN
+    IF NOT os.Path.exists(m_wc_tempdir)
+      AND NOT os.Path.isDirectory(m_wc_tempdir) THEN
+      CALL myerr(
+        SFMT("checkWC_TEMPDIR: FGLQA_WC_TEMPDIR set to '%1', but either doesn't exist or isn't a directory",
+          m_wc_tempdir))
+    END IF
+  ELSE
+    LET m_wc_tempdir = makeTempName("webcomponents")
+    IF NOT os.Path.mkdir(m_wc_tempdir) THEN
+      CALL myerr(SFMT("Can't make clientqa temp webco dir:%1", m_wc_tempdir))
+    END IF
+    --set the var to cause a createEnv()
+    CALL fgl_setenv(FGLQA_WC_TEMPDIR, m_wc_tempdir)
+  END IF
+END FUNCTION
+
 FUNCTION createWEB_COMPONENT_DIRECTORY(exe, wcd)
   DEFINE exe om.DomNode
-  DEFINE wcd, sep, p1, p2, p3 STRING
-  LET sep = os.Path.separator()
-  LET p1=bs2slash(sfmt("%1/web/components",m_gasdir))
-  LET p2=bs2slash(sfmt("%1/webcomponents",m_fgldir))
-  LET p3=bs2slash(sfmt("%1/webcomponents",os.Path.pwd()))
+  DEFINE wcd, p1, p2, p3 STRING
+  IF m_isClientQAWC THEN
+    LET p1 = bs2slash(SFMT("%1/web/components", m_gasdir))
+    LET p2 = bs2slash(SFMT("%1/webcomponents", m_fgldir))
+    LET p3 = bs2slash(SFMT("%1/webcomponents", os.Path.pwd()))
+  END IF
   LET wcd =
-    IIF(wcd == "__CLIENTQA_DEFAULT__",
-      SFMT("%1;%2;%3", p1, p2, p3),
-      wcd)
-  CALL createTag(exe, "WEB_COMPONENT_DIRECTORY", wcd)
+    IIF(m_isClientQAWC, SFMT("%1;%2;%3;%4", m_wc_tempdir, p1, p2, p3), wcd)
+  CALL createTag(exe, WEB_COMPONENT_DIRECTORY, wcd)
 END FUNCTION
 
 --create the XCF from a DomDocument
@@ -439,6 +463,11 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CALL createResource(root,"res.html5proxy.param","--development")
   LET exe=root.createChild("EXECUTION")
   --CALL exe.setAttribute("AllowUnsafeSession","TRUE")
+  --check about WEB_COMPONENT_DIRECTORY being set for clientqa
+  IF (wcd := fgl_getenv(WEB_COMPONENT_DIRECTORY)) IS NOT NULL
+    AND (m_isClientQAWC := (wcd == "__CLIENTQA_DEFAULT__")) == TRUE THEN
+    CALL checkWC_TEMPDIR()
+  END IF
   CALL file_get_output(IIF(isWin(),"set","env"),copyenv) 
   --we simply add every environment var in the .xcf file
   FOR i=1 TO copyenv.getLength() 
@@ -473,7 +502,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   FOR i=1 TO args.getLength()
     CALL createTag(params,"PARAMETER",args[i])
   END FOR
-  IF (wcd:=fgl_getenv("WEB_COMPONENT_DIRECTORY")) IS NOT NULL THEN
+  IF wcd IS NOT NULL THEN
     CALL createWEB_COMPONENT_DIRECTORY(exe, wcd)
   ELSE
     IF m_gasversion < 3.2
@@ -1092,7 +1121,7 @@ FUNCTION getProgramOutput(cmd)
   DEFINE code INT
   CALL log(SFMT("RUN cmd:%1", cmd))
   LET cmdOrig=cmd
-  LET tmpName=makeTempName()
+  LET tmpName = makeTempName("out")
   LET cmd=cmd,">",tmpName," 2>&1"
   --DISPLAY "run:",cmd
   RUN cmd RETURNING code
@@ -1116,9 +1145,10 @@ FUNCTION getProgramOutput(cmd)
 END FUNCTION
 
 #+computes a temporary file name
-FUNCTION makeTempName()
-  DEFINE tmpDir,tmpName,curr STRING
+FUNCTION makeTempName(prefix)
+  DEFINE prefix, tmpDir, tmpName, curr STRING
   DEFINE sb base.StringBuffer
+  DEFINE i INT
   IF isWin() THEN
     LET tmpDir=fgl_getenv("TEMP")
   ELSE
@@ -1133,12 +1163,18 @@ FUNCTION makeTempName()
   CALL sb.replace("-","_",0)
   CALL sb.append(".tmp")
   LET curr=sb.toString()
-  LET tmpName=os.Path.join(tmpDir,sfmt("fgl_%1_%2",fgl_getpid(),curr))
+  LET tmpName =
+    os.Path.join(tmpDir, SFMT("%1_%2_%3", prefix, fgl_getpid(), curr))
+  --ensure the name actually doesn't exist yet
+  WHILE os.Path.exists(tmpName)
+    LET i = i + 1
+    LET tmpName = SFMT("t%1%2", i, tmpName)
+  END WHILE
   RETURN tmpName
 END FUNCTION
 
 FUNCTION createPIDfile()
-  LET m_pidfile = makeTempName()
+  LET m_pidfile = makeTempName("pid")
 END FUNCTION
 
 #+ first check if we can monitor an active session
