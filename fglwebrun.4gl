@@ -19,8 +19,12 @@ DEFINE m_nobrowser BOOLEAN
 DEFINE m_wc_tempdir STRING
 DEFINE m_isClientQAWC
   BOOLEAN --set if we run inside clientqa and need special web component locations
+DEFINE m_sysPort BOOLEAN
+DEFINE m_sysPort_filename STRING
+DEFINE m_sysPort_adminfilename STRING
 CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
 CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
+CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -300,31 +304,153 @@ FUNCTION getGASVersion()
   END FOR
   IF vstring IS NOT NULL THEN
     LET gasversion=parseVersion(vstring)
-    CALL log(SFMT("gasversion=%1", gasversion))
+    IF NOT m_specific_port AND fgl_getenv("GAS_SYS_PORT") IS NOT NULL THEN
+      LET m_sysPort = canUseSysPort(vstring)
+    END IF
+    CALL log(SFMT("gasversion=%1,m_sysPort:%2", gasversion, m_sysPort))
   END IF
   CALL ch.close()
   RETURN gasversion
 END FUNCTION
 
-FUNCTION parseVersion(vstr)
+#+ parses the digit portion out of a string
+#+ possible "1a" -> returns 1
+#+ possible "12 " -> returns 12
+#+ not possible "a12" -> error
+FUNCTION parseInt(numStr)
+  DEFINE numStr STRING
+  DEFINE last, i, num INT
+  LET last = NULL
+  FOR i = 1 TO numStr.getLength()
+    LET num = numStr.subString(1, i)
+    IF num IS NULL THEN
+      RETURN last
+    END IF
+    LET last = num
+  END FOR
+  RETURN last
+END FUNCTION
+
+FUNCTION parseVersionInt(vstr)
   DEFINE vstr STRING
   DEFINE v,v2 STRING
   DEFINE fversion FLOAT
-  DEFINE pointpos,prevpos INTEGER
+  DEFINE pointpos, prevpos, major, minor, buildno INTEGER
+  LET buildno = NULL
   --cut out major.minor from the version
+  LET v = vstr
   LET pointpos=vstr.getIndexOf(".",1)
   IF pointpos>1 THEN
     LET v=vstr.subString(1,pointpos-1)
     LET prevpos=pointpos+1
   END IF
+  LET major = v
   --get the index of the 2nd point
   LET pointpos=vstr.getIndexOf(".",prevpos)
   IF pointpos>1 THEN
     LET v2=vstr.subString(prevpos,pointpos-1)
+    LET minor = v2
     LET v=v,".",v2
+    LET buildno = parseInt(vstr.subString(pointpos + 1, vstr.getLength()))
+  ELSE
+    LET minor = vstr.subString(prevpos, vstr.getLength())
   END IF
+  LET minor = IIF(minor IS NULL, 0, minor)
   LET fversion=v
+  {
+  DISPLAY SFMT("ver:%1,fversion:%2,major:%3,minor:%4,buildno:%5",
+      vstr,
+      fversion,
+      IIF(major IS NULL, "NULL", major),
+      IIF(minor IS NULL, "NULL", minor),
+      IIF(buildno IS NULL, "NULL", buildno))
+  }
+  RETURN fversion, major, minor, buildno
+END FUNCTION
+
+FUNCTION parseVersion(vstr)
+  DEFINE vstr STRING
+  DEFINE fversion FLOAT
+  DEFINE major, minor, buildno INT
+  CALL parseVersionInt(vstr) RETURNING fversion, major, minor, buildno
   RETURN fversion
+END FUNCTION
+
+#+ autoport handling has been implemented in
+#+ GAS 5.00.00
+#+ GAS 4.01.06
+#+ GAS 3.21.02
+FUNCTION canUseSysPort(vstr)
+  DEFINE vstr STRING
+  DEFINE fversion FLOAT
+  DEFINE major, minor, buildno INT
+  CALL parseVersionInt(vstr) RETURNING fversion, major, minor, buildno
+  CASE
+    WHEN fversion >= 5.0
+      RETURN TRUE
+    WHEN major == 4 AND (minor > 1 OR (minor == 1 AND buildno >= 6))
+      RETURN TRUE
+    WHEN major == 3 AND (minor > 21 OR (minor == 21 AND buildno >= 2))
+      RETURN TRUE
+  END CASE
+  DISPLAY "Warning: Can't use the GAS_SYS_PORT feature because version:",
+      vstr,
+      " is too small, you need at least GAS 3.21.02 or GAS 4.01.06 or GAS>=5.00.00"
+  RETURN FALSE
+END FUNCTION
+
+FUNCTION checkSysPortCmd(cmd)
+  DEFINE cmd STRING
+  IF NOT m_sysPort THEN
+    RETURN cmd
+  END IF
+  LET m_sysPort_filename = makeTempName("sysp")
+  LET m_sysPort_adminfilename = makeTempName("syspa")
+  LET cmd =
+      cmd,
+      SFMT(" --sys-port --port-file=%1 --admin-port-file=%2 ",
+          m_sysPort_filename, m_sysPort_adminfilename)
+  RETURN cmd
+END FUNCTION
+
+FUNCTION waitForAutoport()
+  LET m_port = waitForPortfile(m_sysPort_filename)
+  LET m_adminport = waitForPortfile(m_sysPort_adminfilename)
+  CALL log(SFMT("got sysPorts port:%1,admin:%2", m_port, m_adminport))
+END FUNCTION
+
+FUNCTION waitForPortfile(fname)
+  DEFINE fname, port_s STRING
+  DEFINE i, port INT
+  FOR i = 1 TO 10
+    IF NOT os.Path.exists(fname) THEN
+      SLEEP 1
+      CONTINUE FOR
+    END IF
+    LET port_s = readFile(fname)
+    LET port = parseInt(port_s)
+    IF port IS NOT NULL THEN
+      RETURN port
+    END IF
+    SLEEP 1
+  END FOR
+  CALL myerr(SFMT("waitForPortfile(%1) failed:", fname))
+  RETURN NULL
+END FUNCTION
+
+FUNCTION waitForPIDfile()
+  DEFINE pid INT
+  LET pid = waitForPortfile(m_pidfile)
+  DISPLAY SFMT("got pid:%1 in %2", pid, m_pidfile)
+END FUNCTION
+
+FUNCTION readFile(filename)
+  DEFINE filename STRING
+  DEFINE content STRING
+  DEFINE t TEXT
+  LOCATE t IN FILE filename
+  LET content = t
+  RETURN content
 END FUNCTION
 
 FUNCTION getAppDir()
@@ -611,10 +737,11 @@ END FUNCTION
 
 FUNCTION runGAS()
   DEFINE cmd, httpdispatch, filter, comspec, portcmd STRING
-  DEFINE trial,i INT
+  DEFINE trial, i, maxtrials INT
   DEFINE redirect_error INT
   LET httpdispatch=getGASExe()
-  FOR trial=1 TO 10
+  LET maxtrials = IIF(m_sysPort, 1, 10)
+  FOR trial = 1 TO maxtrials
     LET cmd=quote(httpdispatch)
     --LET filter="ERROR"
     --LET filter="ERROR PROCESS"
@@ -633,8 +760,8 @@ FUNCTION runGAS()
         cmd,
         ' -p ',
         quote(m_gasdir),
-        portcmd,
-        SFMT(' -E "res.ic.admin.port=%1"', m_adminport),
+        IIF(m_sysPort, "", portcmd),
+        IIF(m_sysPort, "", SFMT(' -E "res.ic.admin.port=%1"', m_adminport)),
         ' -E ',
         SFMT('"res.log.categories_filter=%1"', filter)
 
@@ -658,10 +785,13 @@ FUNCTION runGAS()
       --renamed in 2.50...
       LET cmd=cmd,' -E "res.appdata.path=',bs2slash( getAppDataDir() ),'"'
     END IF
-    IF m_gasversion>=3.0 AND getGASAdminExe() IS NOT NULL AND fgl_getenv("NO_AUTOCLOSE") IS NULL THEN --enable fglwebrunwatch
+    IF m_gasversion >= 3.0
+        AND (getGASAdminExe() IS NOT NULL OR wantPIDfile())
+        AND fgl_getenv("NO_AUTOCLOSE") IS NULL THEN --enable fglwebrunwatch
       CALL createPIDfile()
       LET cmd = cmd, " --pid-file ", quote(m_pidfile)
     END IF
+    LET cmd = checkSysPortCmd(cmd)
     IF redirect_error THEN
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
     END IF
@@ -684,6 +814,13 @@ FUNCTION runGAS()
       END IF
     END IF
     RUN cmd WITHOUT WAITING
+    IF wantPIDfile() THEN
+      CALL waitForPIDfile()
+    END IF
+    IF m_sysPort THEN
+      CALL waitForAutoport()
+      RETURN
+    END IF
     FOR i=1 TO 30
       IF try_GASalive() THEN
         RETURN
@@ -1174,8 +1311,19 @@ FUNCTION makeTempName(prefix)
   RETURN tmpName
 END FUNCTION
 
+FUNCTION wantPIDfile()
+  RETURN fgl_getenv(GAS_PID_FILE) IS NOT NULL
+END FUNCTION
+
 FUNCTION createPIDfile()
-  LET m_pidfile = makeTempName("pid")
+  LET m_pidfile = fgl_getenv(GAS_PID_FILE)
+  IF m_pidfile IS NOT NULL THEN
+    IF os.Path.exists(m_pidfile) THEN
+      CALL myerr(SFMT("%1 %2 must not exist", GAS_PID_FILE, m_pidfile))
+    END IF
+  ELSE
+    LET m_pidfile = makeTempName("pid")
+  END IF
 END FUNCTION
 
 #+ first check if we can monitor an active session
@@ -1189,10 +1337,15 @@ FUNCTION checkAutoClose()
   IF m_pidfile IS NULL
       OR m_gasversion < 3.0
       OR fgl_getenv("NO_AUTOCLOSE") IS NOT NULL
-      OR m_nobrowser THEN
+      OR m_nobrowser
+      OR wantPIDfile() THEN
     CALL log(
-        SFMT("checkAutoClose: no autoclose m_pidfile:%1,m_gasversion:%2,NO_AUTOCLOSE:%3,no browser:%4",
-            m_pidfile, m_gasversion, fgl_getenv("NO_AUTOCLOSE"), m_nobrowser))
+        SFMT("checkAutoClose: no autoclose m_pidfile:%1,m_gasversion:%2,NO_AUTOCLOSE:%3,no browser:%4,wantPIDfile:%5",
+            m_pidfile,
+            m_gasversion,
+            fgl_getenv("NO_AUTOCLOSE"),
+            m_nobrowser,
+            wantPIDfile()))
     RETURN
   END IF
   LET gasadmin = getGASAdminExe()
