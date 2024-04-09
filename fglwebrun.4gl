@@ -49,7 +49,7 @@ MAIN
     RETURN
   END IF
   CALL checkGBCDir()
-  IF NOT try_GASalive() THEN
+  IF m_sysPort OR NOT try_GASalive() THEN
     CALL runGAS()
   END IF
   IF m_gasversion<3.0 THEN
