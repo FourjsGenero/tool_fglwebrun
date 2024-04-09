@@ -462,6 +462,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   CALL createResource(root,"res.path",fgl_getenv("PATH"))
   CALL createResource(root,"res.html5proxy.param","--development")
   LET exe=root.createChild("EXECUTION")
+  CALL checkAUTO_LOGOUT(doc, root)
   --CALL exe.setAttribute("AllowUnsafeSession","TRUE")
   --check about WEB_COMPONENT_DIRECTORY being set for clientqa
   IF (wcd := fgl_getenv(WEB_COMPONENT_DIRECTORY)) IS NOT NULL
@@ -1294,4 +1295,20 @@ FUNCTION hasGASSession(gasadmin, port)
   END FOR
   CALL myerr(line)
   RETURN NULL
+END FUNCTION
+
+FUNCTION checkAUTO_LOGOUT(doc, root)
+  DEFINE doc om.DomDocument
+  DEFINE root, al, t, c om.DomNode
+  DEFINE timeout INT
+  LET timeout = fgl_getenv("GAS_AUTO_LOGOUT_TIMEOUT")
+  IF timeout IS NULL OR timeout < 1 THEN
+    RETURN
+  END IF
+  LET al = root.createChild("AUTO_LOGOUT")
+  LET t = al.createChild("TIMEOUT")
+  LET c = doc.createChars(timeout)
+  CALL t.appendChild(c)
+  CALL log(
+      SFMT("added <AUTO_LOGOUT><TIMEOUT>%1</TIMEOUT></AUTO_LOGOUT>", timeout))
 END FUNCTION
