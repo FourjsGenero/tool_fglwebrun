@@ -22,6 +22,9 @@ DEFINE m_isClientQAWC
 DEFINE m_sysPort BOOLEAN
 DEFINE m_sysPort_filename STRING
 DEFINE m_sysPort_adminfilename STRING
+DEFINE m_https BOOLEAN
+DEFINE m_https_opt_key STRING
+DEFINE m_https_opt_cert STRING
 CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
 CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
 CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
@@ -103,6 +106,7 @@ FUNCTION setupVariables()
     LET m_gasdir=os.Path.fullPath(m_gasdir)
   END IF
   LET m_gasversion=getGASVersion()
+  CALL check_https()
 END FUNCTION
 
 --2.41 has no os.Path.fullPath
@@ -410,6 +414,37 @@ FUNCTION checkSysPortCmd(cmd)
       cmd,
       SFMT(" --sys-port --port-file=%1 --admin-port-file=%2 ",
           m_sysPort_filename, m_sysPort_adminfilename)
+  RETURN cmd
+END FUNCTION
+
+FUNCTION checkPEM(env, opt)
+  DEFINE env, cmdpart, opt, pem STRING
+  LET pem = fgl_getenv(env)
+  IF pem IS NOT NULL THEN
+    IF NOT os.Path.exists(pem) THEN
+      CALL myerr(SFMT("%1: Certificate file '%2' does not exist", env, pem))
+    END IF
+    LET cmdpart = SFMT(" %1 %2 ", opt, quote(pem))
+  END IF
+  RETURN cmdpart
+END FUNCTION
+
+FUNCTION check_https()
+  IF m_gasversion < 5.0 THEN
+    RETURN
+  END IF
+  LET m_https_opt_key = checkPEM("GAS_CERT_KEY", "--cert-key")
+  LET m_https_opt_cert = checkPEM("GAS_CERT_FILE", "--cert-file")
+  IF m_https_opt_cert IS NOT NULL AND m_https_opt_key IS NOT NULL THEN
+    LET m_https = TRUE
+  END IF
+END FUNCTION
+
+FUNCTION checkCertCmd(cmd)
+  DEFINE cmd STRING
+  IF m_https THEN --extend cmd with the key options
+    LET cmd = cmd, m_https_opt_key, m_https_opt_cert
+  END IF
   RETURN cmd
 END FUNCTION
 
@@ -792,6 +827,7 @@ FUNCTION runGAS()
       LET cmd = cmd, " --pid-file ", quote(m_pidfile)
     END IF
     LET cmd = checkSysPortCmd(cmd)
+    LET cmd = checkCertCmd(cmd)
     IF redirect_error THEN
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
     END IF
@@ -857,17 +893,21 @@ FUNCTION try_GASalive()
         RETURN FALSE
     END TRY
     CALL log("GAS probe ok")
-    -- write header
-    LET s = "GET /monitor HTTP/1.1"
-    CALL writeLine(c, s)
-    CALL writeLine(c, "Host: localhost")
-    CALL writeLine(c, "User-Agent: fglrun")
-    CALL writeLine(c, "Accept: */*")
-    CALL writeLine(c, "Connection: close")
-    CALL writeLine(c, "")
+    IF NOT m_https THEN
+      -- write header
+      LET s = "GET /monitor HTTP/1.1"
+      CALL writeLine(c, s)
+      CALL writeLine(c, "Host: localhost")
+      CALL writeLine(c, "User-Agent: fglrun")
+      CALL writeLine(c, "Accept: */*")
+      CALL writeLine(c, "Connection: close")
+      CALL writeLine(c, "")
 
-    LET found = read_response(c)
-    CALL c.close()
+      LET found = read_response(c)
+      CALL c.close()
+    ELSE
+      LET found = TRUE --TODO: do some binary snooping if the other side is https
+    END IF
     RETURN found
 END FUNCTION
 
@@ -1036,8 +1076,9 @@ FUNCTION openBrowser(customURL)
 END FUNCTION
 
 FUNCTION getGASURL()
-  DEFINE url, q STRING
-  LET url=sfmt("http://%1:%2/ua/r/_%3",m_gashost,m_port,m_appname)
+  DEFINE url, q, proto STRING
+  LET proto = IIF(m_https, "https", "http")
+  LET url = SFMT("%1://%2:%3/ua/r/_%4", proto, m_gashost, m_port, m_appname)
   LET q=fgl_getenv("GBCQUERY")
   IF q IS NOT NULL THEN
     LET url=url,"?",q
