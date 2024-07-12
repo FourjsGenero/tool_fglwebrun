@@ -28,6 +28,7 @@ DEFINE m_https_opt_cert STRING
 CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
 CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
 CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
+CONSTANT GAS_DOC_ROOT = "GAS_DOC_ROOT"
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -448,6 +449,22 @@ FUNCTION checkCertCmd(cmd)
   RETURN cmd
 END FUNCTION
 
+FUNCTION checkDocRootCmd(cmd)
+  DEFINE cmd, docroot STRING
+  LET docroot = fgl_getenv(GAS_DOC_ROOT)
+  IF docroot IS NULL THEN
+    RETURN cmd
+  END IF
+  IF NOT os.Path.exists(docroot) THEN
+    CALL myerr(SFMT("%1=%2 doesn't exist", GAS_DOC_ROOT, docroot))
+  END IF
+  IF NOT os.Path.isDirectory(docroot) THEN
+    CALL myerr(SFMT("%1=%2 is not a directory", GAS_DOC_ROOT, docroot))
+  END IF
+  LET cmd = cmd, SFMT(' -E "res.path.docroot.user=%1" ', docroot)
+  RETURN cmd
+END FUNCTION
+
 FUNCTION waitForAutoport()
   LET m_port = waitForPortfile(m_sysPort_filename)
   LET m_adminport = waitForPortfile(m_sysPort_adminfilename)
@@ -536,14 +553,23 @@ FUNCTION getAppDataDir()
   RETURN m_appdata_dir
 END FUNCTION
 
---write a GAS app entry 
 FUNCTION createGASApp()
-  DEFINE appfile,ext,cmd STRING
+  DEFINE i INT
+  DEFINE args DYNAMIC ARRAY OF STRING
+  FOR i = 2 TO num_args()
+    LET args[i - 1] = arg_val(i)
+  END FOR
+  CALL createGASAppInt(arg_val(1), args, "_")
+END FUNCTION
+
+--write a GAS app entry
+FUNCTION createGASAppInt(program, args, prefix)
+  DEFINE program, prefix, appfile, ext, cmd STRING
   DEFINE arg1 STRING
   DEFINE args DYNAMIC ARRAY OF STRING
-  DEFINE code,i INT
+  DEFINE code INT
   DEFINE invokeShell BOOLEAN
-  LET arg1=os.Path.fullPath(arg_val(1))
+  LET arg1 = os.Path.fullPath(program)
   LET cmd= "fglrun -r ",quote(arg1),IIF(isWin(),">NUL"," >/dev/null 2>&1")
   --we check if we can deassemble the file, this works for .42m and .42r
   RUN cmd RETURNING code
@@ -556,10 +582,7 @@ FUNCTION createGASApp()
     LET m_appname=m_appname.subString(1,IIF(ext.getLength()==0,m_appname.getLength(),m_appname.getLength()-ext.getLength()-1))
   END IF
   CALL log(sfmt("m_appname:%1",m_appname))
-  FOR i=2 TO num_args()
-    LET args[i-1]=arg_val(i)
-  END FOR
-  LET appfile=os.Path.join(getAppDir(),sfmt("_%1.xcf",m_appname))
+  LET appfile = os.Path.join(getAppDir(), SFMT("%1%2.xcf", prefix, m_appname))
   CALL createXCF(appfile,arg1,args,invokeShell)
 END FUNCTION
 
@@ -828,6 +851,7 @@ FUNCTION runGAS()
     END IF
     LET cmd = checkSysPortCmd(cmd)
     LET cmd = checkCertCmd(cmd)
+    LET cmd = checkDocRootCmd(cmd)
     IF redirect_error THEN
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
     END IF
