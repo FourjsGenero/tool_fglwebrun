@@ -824,7 +824,9 @@ FUNCTION runGAS()
         SFMT('"res.log.categories_filter=%1"', filter)
 
     --comment the following line if you want  to disable AUI tree watching
-    LET cmd=cmd,'  -E res.uaproxy.param=--development '
+    IF fgl_getenv("NODEVELOPMENT") IS NULL THEN
+      LET cmd=cmd,'  -E res.uaproxy.param=--development '
+    END IF
     IF fgl_getenv("OMITCONSOLE") IS NULL THEN
       LET cmd = cmd, ' -E "res.log.output.type=CONSOLE"'
     END IF
