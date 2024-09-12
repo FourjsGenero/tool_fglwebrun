@@ -648,6 +648,7 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
   LET exe=root.createChild("EXECUTION")
   CALL checkAUTO_LOGOUT(doc, root)
   --CALL exe.setAttribute("AllowUnsafeSession","TRUE")
+  CALL exe.setAttribute("AllowUrlParameters","TRUE")
   --check about WEB_COMPONENT_DIRECTORY being set for clientqa
   IF (wcd := fgl_getenv(WEB_COMPONENT_DIRECTORY)) IS NOT NULL
     AND (m_isClientQAWC := (wcd == "__CLIENTQA_DEFAULT__")) == TRUE THEN
