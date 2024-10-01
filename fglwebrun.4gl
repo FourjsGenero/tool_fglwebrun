@@ -27,8 +27,10 @@ DEFINE m_https_opt_key STRING
 DEFINE m_https_opt_cert STRING
 CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
 CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
-CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
+PUBLIC CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
 CONSTANT GAS_DOC_ROOT = "GAS_DOC_ROOT"
+CONSTANT GAS_SYS_PORT = "GAS_SYS_PORT"
+CONSTANT GAS_SYS_PORT_FILENAME = "GAS_SYS_PORT_FILENAME"
 --provides a simple command line fglrun replacement for GBC aka GWC-JS to do
 --the same as 
 -- % fglrun test a b c
@@ -309,7 +311,7 @@ FUNCTION getGASVersion()
   END FOR
   IF vstring IS NOT NULL THEN
     LET gasversion=parseVersion(vstring)
-    IF NOT m_specific_port AND fgl_getenv("GAS_SYS_PORT") IS NOT NULL THEN
+    IF NOT m_specific_port AND fgl_getenv(GAS_SYS_PORT) IS NOT NULL THEN
       LET m_sysPort = canUseSysPort(vstring)
     END IF
     CALL log(SFMT("gasversion=%1,m_sysPort:%2", gasversion, m_sysPort))
@@ -409,7 +411,10 @@ FUNCTION checkSysPortCmd(cmd)
   IF NOT m_sysPort THEN
     RETURN cmd
   END IF
-  LET m_sysPort_filename = makeTempName("sysp")
+  LET m_sysPort_filename = fgl_getenv(GAS_SYS_PORT_FILENAME)
+  IF m_sysPort_filename IS NULL THEN
+    LET m_sysPort_filename = makeTempName("sysp")
+  END IF
   LET m_sysPort_adminfilename = makeTempName("syspa")
   LET cmd =
       cmd,
@@ -846,9 +851,8 @@ FUNCTION runGAS()
       --renamed in 2.50...
       LET cmd=cmd,' -E "res.appdata.path=',bs2slash( getAppDataDir() ),'"'
     END IF
-    IF m_gasversion >= 3.0
-        AND (getGASAdminExe() IS NOT NULL OR wantPIDfile())
-        AND fgl_getenv("NO_AUTOCLOSE") IS NULL THEN --enable fglwebrunwatch
+    IF m_gasversion >= 3.0 AND (getGASAdminExe() IS NOT NULL OR wantPIDfile())
+        {AND fgl_getenv("NO_AUTOCLOSE") IS NULL} THEN --write the gas pid into a id file
       CALL createPIDfile()
       LET cmd = cmd, " --pid-file ", quote(m_pidfile)
     END IF
