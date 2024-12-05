@@ -28,9 +28,11 @@ DEFINE m_sysPort_adminfilename STRING
 DEFINE m_https BOOLEAN
 DEFINE m_https_opt_key STRING
 DEFINE m_https_opt_cert STRING
+DEFINE m_gas_cmd STRING
 CONSTANT FGLQA_WC_TEMPDIR = "FGLQA_WC_TEMPDIR"
 CONSTANT WEB_COMPONENT_DIRECTORY = "WEB_COMPONENT_DIRECTORY"
 PUBLIC CONSTANT GAS_PID_FILE = "GAS_PID_FILE"
+PUBLIC CONSTANT GAS_WIN_OUTPUT_FILE = "GAS_WIN_OUTPUT_FILE"
 CONSTANT GAS_DOC_ROOT = "GAS_DOC_ROOT"
 CONSTANT GAS_SYS_PORT = "GAS_SYS_PORT"
 CONSTANT GAS_SYS_PORT_FILENAME = "GAS_SYS_PORT_FILENAME"
@@ -494,7 +496,7 @@ FUNCTION waitForPortfile(fname)
     END IF
     SLEEP 1
   END FOR
-  CALL myerr(SFMT("waitForPortfile(%1) failed:", fname))
+  CALL myerr(SFMT("waitForPortfile(%1) failed", fname))
   RETURN NULL
 END FUNCTION
 
@@ -806,6 +808,7 @@ FUNCTION runGAS()
   DEFINE cmd, httpdispatch, filter, comspec, portcmd STRING
   DEFINE trial, i, maxtrials INT
   DEFINE redirect_error INT
+  DEFINE lang, outfile STRING
   LET httpdispatch=getGASExe()
   LET maxtrials = IIF(m_sysPort, 1, 10)
   FOR trial = 1 TO maxtrials
@@ -866,7 +869,6 @@ FUNCTION runGAS()
       LET cmd=cmd," 2>",IIF(isWin(),"nul","/dev/null")
     END IF
     
-    CALL log(sfmt("RUN %1 ...",cmd))
     IF isWin() THEN
       IF cmd.getIndexOf('"',1)==1 THEN --executable is quoted:we need double quoting and employ cmd.exe (again)
         LET comspec=fgl_getenv("COMSPEC")
@@ -877,12 +879,20 @@ FUNCTION runGAS()
       --on some machines running httpdispatch in one and the same console in which fglwebrun was started
       --seems to let uaproxy processes hanging
       --even if fglrun did terminate and the client did terminate.. something to explore for the GAS folks
+      --GAS doesn't like .fglutf8 , so if a parent process invokes fglrun with this env GAS dies
+      LET lang=IIF(fgl_getenv("LANG")==".fglutf8","(set LANG=) && ","")
       IF fgl_getenv("VERBOSE") IS NOT NULL OR fgl_getenv("FILTER") IS NOT NULL THEN
-        LET cmd=sfmt("start %1",cmd) --show the additional GAS console win
+        LET cmd = sfmt("%1start %2", lang, cmd) --show the additional GAS console win
       ELSE
-        LET cmd=sfmt("start /B %1 >NUL 2>&1",cmd) --hide the GAS console win
+        --LET cmd=sfmt("start /B %1 >NUL 2>&1",cmd) --hide the GAS console win
+        LET outfile=fgl_getenv(GAS_WIN_OUTPUT_FILE)
+        LET outfile=IIF(outfile IS NOT NULL, quote(outfile), "NUL")
+        LET cmd = sfmt("%1start /B %2 >%3 2>&1",lang, cmd, outfile) --hide the GAS console win
       END IF
     END IF
+
+    LET m_gas_cmd = cmd
+    CALL log(sfmt("RUN %1 ...",cmd))
     RUN cmd WITHOUT WAITING
     IF wantPIDfile() THEN
       CALL waitForPIDfile()
@@ -999,7 +1009,12 @@ END FUNCTION
 
 FUNCTION myerr(err)
   DEFINE err STRING
-  DISPLAY "ERROR:",err
+  DEFINE outp STRING
+  LET outp = "ERROR:",err
+  IF m_gas_cmd IS NOT NULL THEN
+    LET outp=outp, " GAS cmd:",m_gas_cmd
+  END IF
+  DISPLAY outp
   EXIT PROGRAM 1
 END FUNCTION
 
