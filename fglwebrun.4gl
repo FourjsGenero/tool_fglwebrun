@@ -631,7 +631,7 @@ END FUNCTION
 
 --create the XCF from a DomDocument
 FUNCTION createXCF(appfile,module,args,invokeShell)
-  DEFINE appfile, module, wcd STRING
+  DEFINE appfile, module, wcd, to_user_agent, to_request_result STRING
   DEFINE args DYNAMIC ARRAY OF STRING
   DEFINE invokeShell,imagepathFound BOOLEAN
   DEFINE copyenv DYNAMIC ARRAY OF STRING
@@ -728,8 +728,16 @@ FUNCTION createXCF(appfile,module,args,invokeShell)
         CALL createTag(out,"GWC-JS",m_gbcname)
       END IF
       LET timeout=out.createChild("TIMEOUT")
-      CALL createTag(timeout,       "USER_AGENT","20000")
-      CALL createTag(timeout,       "REQUEST_RESULT","10000")
+      LET to_user_agent = fgl_getenv("TIMEOUT_USER_AGENT")
+      CALL createTag(
+          timeout,
+          "USER_AGENT",
+          IIF(to_user_agent IS NOT NULL, to_user_agent, "20000"))
+      LET to_request_result = fgl_getenv("TIMEOUT_REQUEST_RESULT")
+      CALL createTag(
+          timeout,
+          "REQUEST_RESULT",
+          IIF(to_request_result IS NOT NULL, to_request_result, "10000"))
   END CASE
   TRY
     CALL root.writeXml(appfile)
