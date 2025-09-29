@@ -21,6 +21,7 @@ Prerequisites:
 FGL+GAS >=2.41
 
 The FGLASDIR environment variable for the GAS install location needs to be set.
+GBC is found in $FGLGBCDIR.
 
 For GAS < 3.0 GWC HTML5 is started.
 
